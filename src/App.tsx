@@ -13,7 +13,7 @@ import { Editor2D, type Selection, type Tool } from './components/Editor2D';
 import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { PrintSheets, TemplateArt, type Paper } from './components/PrintSheets';
-import { ExportMenu } from './components/ExportMenu';
+import { AppMenu } from './components/AppMenu';
 
 // three.js is large; load it only when the 3D pane is shown.
 const Preview3D = lazy(() => import('./components/Preview3D').then((m) => ({ default: m.Preview3D })));
@@ -40,7 +40,7 @@ function itemFromGear(g: GearSpec): PlacedItem {
 }
 
 function starterLayout(): Layout {
-  const base: Layout = { version: 1, name: 'My case', caseId: '1510', style: 'trekpak', items: [], dividers: [], settings: defaultSettings('trekpak') };
+  const base: Layout = { version: 1, name: '', caseId: '1510', style: 'trekpak', items: [], dividers: [], settings: defaultSettings('trekpak') };
   // A small example so the first visit isn't an empty box.
   const pick = (id: string) => GEAR.find((g) => g.id === id);
   const demo: [string, number, number][] = [
@@ -199,7 +199,7 @@ export default function App() {
     const url = shareUrl(layout);
     try {
       await navigator.clipboard.writeText(url);
-      flash(layout.items.some((i) => i.image) ? 'Link copied (photos are not included in links)' : 'Share link copied');
+      flash(layout.items.some((i) => i.image) ? 'Link copied (photos are not included in links)' : 'Link copied');
     } catch {
       prompt('Copy this link:', url);
     }
@@ -213,7 +213,7 @@ export default function App() {
         if (!l) throw new Error('bad');
         set(l);
         setSelection(null);
-        flash(`Loaded ${l.name}`);
+        flash(l.name ? `Loaded ${l.name}` : 'Layout loaded');
       } catch {
         flash("That file isn't a case layout");
       }
@@ -232,7 +232,7 @@ export default function App() {
   };
   const newLayout = () => {
     if (!confirm('Start a new empty layout? (You can undo this.)')) return;
-    set({ ...starterLayout(), items: [], name: 'My case' });
+    set({ ...starterLayout(), items: [], name: '' });
     setSelection(null);
   };
 
@@ -247,7 +247,7 @@ export default function App() {
             <rect x="11" y="0.5" width="10" height="4" rx="2" />
             <path d="M12 8v11M12 13h15" />
           </svg>
-          <input className="name" value={layout.name} onChange={(e) => set((L) => ({ ...L, name: e.target.value }), false)} aria-label="Layout name" />
+          <input className="name" value={layout.name} placeholder="Name your case" onChange={(e) => set((L) => ({ ...L, name: e.target.value }), false)} aria-label="Case name" />
         </div>
         <div className="seg" role="group" aria-label="View">
           {(['2d', 'split', '3d'] as const).map((m) => (
@@ -255,14 +255,6 @@ export default function App() {
               {m === 'split' ? '2D + 3D' : m.toUpperCase()}
             </button>
           ))}
-        </div>
-        <div className="seg" role="group" aria-label="Units">
-          <button className={units === 'in' ? 'on' : ''} onClick={() => setUnits('in')}>
-            in
-          </button>
-          <button className={units === 'mm' ? 'on' : ''} onClick={() => setUnits('mm')}>
-            mm
-          </button>
         </div>
         <div className="actions">
           <div className="undo-group" role="group" aria-label="History">
@@ -279,17 +271,18 @@ export default function App() {
               </svg>
             </button>
           </div>
-          <button className="btn" onClick={newLayout}>
-            New
-          </button>
-          <button className="btn" onClick={() => fileRef.current?.click()}>
-            Open
-          </button>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => (loadFile(e.target.files?.[0]), (e.target.value = ''))} />
-          <button className="btn" onClick={share}>
-            Share link
-          </button>
-          <ExportMenu paper={paper} onPrint={printTemplate} onSvg={downloadSvg} onJson={saveFile} />
+          <AppMenu
+            units={units}
+            setUnits={setUnits}
+            paper={paper}
+            onNew={newLayout}
+            onOpen={() => fileRef.current?.click()}
+            onCopyLink={share}
+            onPrint={printTemplate}
+            onSvg={downloadSvg}
+            onJson={saveFile}
+          />
         </div>
       </header>
 

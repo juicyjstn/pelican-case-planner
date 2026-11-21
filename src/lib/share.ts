@@ -1,6 +1,7 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from 'lz-string';
 import type { Layout } from '../types';
 import { defaultSettings } from '../data/defaults';
+import { decodeCompact, encodeCompact } from './codec';
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
@@ -19,7 +20,7 @@ export function encodeLayout(layout: Layout): string {
 
 export function shareUrl(layout: Layout): string {
   const base = location.href.split('#')[0];
-  return `${base}#l=${encodeLayout(layout)}`;
+  return `${base}#c=${encodeCompact(layout)}`;
 }
 
 /** Validate and fill defaults on anything loaded from a link, file or storage. */
@@ -29,7 +30,8 @@ export function normalizeLayout(raw: unknown): Layout | null {
   if (o.version !== 1 || typeof o.caseId !== 'string') return null;
   return {
     version: 1,
-    name: typeof o.name === 'string' ? o.name : 'My case',
+    // 'My case' was the old default name; treat it as unnamed.
+    name: typeof o.name === 'string' && o.name !== 'My case' ? o.name : '',
     caseId: o.caseId,
     customCase: o.customCase,
     style: o.style ?? 'trekpak',
@@ -40,6 +42,9 @@ export function normalizeLayout(raw: unknown): Layout | null {
 }
 
 export function decodeHash(hash: string): Layout | null {
+  const compact = hash.match(/[#&]c=([^&]+)/);
+  if (compact) return decodeCompact(compact[1]);
+  // Older lz-string JSON links
   const m = hash.match(/[#&]l=([^&]+)/);
   if (!m) return null;
   try {

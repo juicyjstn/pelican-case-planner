@@ -116,7 +116,7 @@ export function PrintSheets(props: Props) {
   // Summary page
   pages.push(
     <div className="sheet" key="summary">
-      <h1>{layout.name}</h1>
+      <h1>{layout.name || 'Case layout'}</h1>
       <p>
         Pelican {c.model} {c.line === 'Air' ? 'Air' : ''} · interior {fmt(c.l, units)} × {fmt(c.w, units)} · {layout.style}
       </p>
@@ -184,7 +184,7 @@ export function PrintSheets(props: Props) {
               {String.fromCharCode(65 + r)}
               {col + 1}
             </b>{' '}
-            row {r + 1}/{plan.rows}, column {col + 1}/{plan.cols} · {layout.name} · page {n} of {total}
+            row {r + 1}/{plan.rows}, column {col + 1}/{plan.cols} · {layout.name || 'Case layout'} · page {n} of {total}
           </div>
           <svg width={`${plan.cw}mm`} height={`${plan.ch}mm`} viewBox={`${x0} ${y0} ${plan.cw} ${plan.ch}`}>
             <TemplateArt {...props} />
