@@ -291,6 +291,7 @@ export default function App() {
         deleteSelection();
       } else if (e.key === 'h' && usesDividers) setTool((x) => (x === 'divider-h' ? 'select' : 'divider-h'));
       else if (e.key === 'v' && usesDividers) setTool((x) => (x === 'divider-v' ? 'select' : 'divider-v'));
+      else if (e.key === 'm') setTool((x) => (x === 'measure' ? 'select' : 'measure'));
       else if (e.key === 'r' && selection?.kind === 'item') {
         const ids = targetIds();
         set((L) => ({ ...L, items: L.items.map((i) => (ids.includes(i.uid) ? { ...i, rot: !i.rot, room: rotateRoom(i.room, !i.rot) } : i)) }));
@@ -477,6 +478,12 @@ export default function App() {
                   </>
                 )}
               </div>
+              <button className={`btn small toggle ${tool === 'measure' ? 'on' : ''}`} onClick={() => setTool(tool === 'measure' ? 'select' : 'measure')} aria-pressed={tool === 'measure'} title="Measure between two points (M); Shift keeps it straight">
+                <svg viewBox="0 0 24 24" className="inline-icon" aria-hidden>
+                  <path d="M3 17 17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2" />
+                </svg>
+                <span className="lbl"> Measure</span>
+              </button>
               <RotateControl rot={rot} turn={turn} />
               {usesDividers && layout.items.length > 0 && (
                 <button className="btn small" onClick={runAutoDivide} title="Replace the dividers with an automatic layout around your gear (undo to go back)">
@@ -491,7 +498,9 @@ export default function App() {
                 </button>
               )}
               <span className="tip">
-                {tool === 'select'
+                {tool === 'measure'
+                  ? 'Drag between two points; ends snap to corners and edges. Shift keeps it straight. Esc when done.'
+                  : tool === 'select'
                   ? 'Drag to move · R rotate · arrows nudge · scroll to zoom · double-click to fit'
                   : 'Click inside the case to place a divider. It extends to the nearest walls. Esc when done.'}
               </span>

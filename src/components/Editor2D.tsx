@@ -19,7 +19,7 @@ import {
 } from '../lib/geometry';
 import { fmt, MM_PER_IN } from '../lib/units';
 
-export type Tool = 'select' | 'divider-h' | 'divider-v';
+export type Tool = 'select' | 'divider-h' | 'divider-v' | 'measure';
 export type ViewRot = 0 | 90 | 180 | 270;
 export type Selection = { kind: 'item' | 'divider'; id: string } | null;
 
@@ -49,6 +49,7 @@ const RULER = 26;
 
 type Drag =
   | { kind: 'item'; id: string; dx: number; dy: number; moved: boolean; group: { uid: string; x: number; y: number }[]; x0: number; y0: number }
+  | { kind: 'measure' }
   | { kind: 'marquee'; a: { x: number; y: number }; b: { x: number; y: number }; add: string[] }
   | { kind: 'divider'; id: string; moved: boolean }
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number; moved: boolean };
@@ -67,6 +68,11 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
   const [drag, setDrag] = useState<Drag | null>(null);
   const [guides, setGuides] = useState<SnapGuide[]>([]);
   const movedRef = useRef(false);
+  /** the last measurement, kept on screen until the next one or until the tool changes */
+  const [measure, setMeasure] = useState<{ a: { x: number; y: number }; b: { x: number; y: number } } | null>(null);
+  useEffect(() => {
+    if (tool !== 'measure') setMeasure(null);
+  }, [tool]);
   // Touch: active pointers, and the last two-finger distance/midpoint while pinching.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null);
@@ -186,8 +192,31 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
     return refit(d, layout.dividers, c, t, axis === 'h' ? p.x : p.y, ins);
   };
 
+  /** Snap a measuring point to the nearest corner or edge midpoint of gear, dividers or walls. */
+  const snapPoint = (p: { x: number; y: number }) => {
+    const th = 10 * mmPerPx();
+    const rects: Rect[] = [{ x: 0, y: 0, w: c.l, h: c.w }, ...layout.items.map(itemRect), ...[...solve.resolved.values()].map((d) => d.rect)];
+    if (ins > 0) rects.push({ x: ins, y: ins, w: c.l - 2 * ins, h: c.w - 2 * ins });
+    let best = p, bd = th;
+    for (const r of rects) {
+      for (const x of [r.x, r.x + r.w / 2, r.x + r.w])
+        for (const y of [r.y, r.y + r.h / 2, r.y + r.h]) {
+          const d = Math.hypot(p.x - x, p.y - y);
+          if (d < bd) (bd = d), (best = { x, y });
+        }
+    }
+    return best;
+  };
+
   const onBgDown = (e: React.PointerEvent) => {
     const p = toLocal(e);
+    if (tool === 'measure') {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      const a = snapPoint(p);
+      setMeasure({ a, b: a });
+      setDrag({ kind: 'measure' });
+      return;
+    }
     if (tool !== 'select') {
       if (p.x < ins || p.y < ins || p.x > c.l - ins || p.y > c.w - ins) return;
       const d = newDividerAt(p);
@@ -260,6 +289,15 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
       setDrag({ ...drag, b: p });
       return;
     }
+    if (drag.kind === 'measure') {
+      setMeasure((m) => {
+        if (!m) return m;
+        let b = snapPoint(p);
+        if (e.shiftKey) b = Math.abs(b.x - m.a.x) > Math.abs(b.y - m.a.y) ? { x: b.x, y: m.a.y } : { x: m.a.x, y: b.y };
+        return { ...m, b };
+      });
+      return;
+    }
     if (!drag.moved && !movedRef.current) {
       // Guard with a ref: several pointermoves can arrive before React re-renders.
       movedRef.current = true;
@@ -309,7 +347,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
 
   /* ---------------- rendering helpers ---------------- */
 
-  const preview = tool !== 'select' && hover && hover.x > ins && hover.y > ins && hover.x < c.l - ins && hover.y < c.w - ins ? newDividerAt(hover) : null;
+  const preview = (tool === 'divider-h' || tool === 'divider-v') && hover && hover.x > ins && hover.y > ins && hover.x < c.l - ins && hover.y < c.w - ins ? newDividerAt(hover) : null;
   const previewResolved = useMemo(() => {
     if (!preview) return null;
     // Resolve the preview against the existing set.
@@ -536,6 +574,29 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
             <DividerLabel key={d.uid} d={d} rot={rot} text={`${label} · ${fmt(d.length + layout.settings.fitAllowance, units)}`} fs={fs * 0.85} />
           ) : null;
         })}
+
+      {measure && Math.hypot(measure.b.x - measure.a.x, measure.b.y - measure.a.y) > 0.5 && (() => {
+        const { a, b } = measure;
+        const sa = toScreen(a, rot, c), sb = toScreen(b, rot, c);
+        const dx = Math.abs(sb.x - sa.x), dy = Math.abs(sb.y - sa.y);
+        const dist = Math.hypot(dx, dy);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const text = fmt(dist, units) + (dx > 0.5 && dy > 0.5 ? `  (${fmt(dx, units)} × ${fmt(dy, units)})` : '');
+        const off = screenDeltaToCase(0, -fs * 0.9, rot);
+        return (
+          <g pointerEvents="none" className="measure-tool">
+            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} strokeWidth={Math.max(0.6, fs * 0.08)} />
+            <circle cx={a.x} cy={a.y} r={fs * 0.22} />
+            <circle cx={b.x} cy={b.y} r={fs * 0.22} />
+            <g transform={up(mx + off.dx, my + off.dy)}>
+              <rect x={mx + off.dx - text.length * fs * 0.29} y={my + off.dy - fs * 0.7} width={text.length * fs * 0.58} height={fs * 1.35} rx={fs * 0.3} className="measure-tag" />
+              <text x={mx + off.dx} y={my + off.dy + fs * 0.35} fontSize={fs * 0.95} textAnchor="middle" className="measure-text">
+                {text}
+              </text>
+            </g>
+          </g>
+        );
+      })()}
 
       {drag?.kind === 'marquee' && (
         <rect
