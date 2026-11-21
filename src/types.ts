@@ -29,6 +29,8 @@ export interface CaseSpec {
    * at both the front (handle) and back (hinge) corners; 4 = a double wheel at each corner.
    */
   wheels?: number;
+  /** Pelican's published empty ('No Foam') weight */
+  emptyKg?: number;
   source?: string;
   notes?: string;
   /** true when the user's own measurements replace some published numbers */
@@ -50,6 +52,8 @@ export interface GearSpec {
   h: number;
   source?: string;
   notes?: string;
+  /** grams */
+  weight?: number;
   custom?: boolean;
 }
 
@@ -74,6 +78,8 @@ export interface PlacedItem {
    * t = hinge side, b = handle side, l = left end, r = right end.
    */
   room?: Room;
+  /** grams; library gear fills this in when added */
+  weight?: number;
   /** optional top-down photo, data URL (never put in share links) */
   image?: string;
 }

@@ -36,6 +36,7 @@ function itemFromGear(g: GearSpec): PlacedItem {
     x: 0,
     y: 0,
     color: colorFor(g.category),
+    weight: g.weight,
   };
 }
 

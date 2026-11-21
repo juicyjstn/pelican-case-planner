@@ -161,7 +161,9 @@ export function encodeCompact(layout: Layout): string {
     if (colorChanged) flags |= 32;
     if (labelChanged) flags |= 64;
     const hasRoom = !!it.room && ROOM_KEYS.some((k) => (it.room![k] ?? 0) > 0);
-    if (hasRoom) flags |= 128; // extras follow the position
+    // Weight only travels when the library can't supply it.
+    const hasWeight = it.weight != null && !(inLib && g!.weight != null && Math.round(g!.weight) === Math.round(it.weight));
+    if (hasRoom || hasWeight) flags |= 128; // extras follow the position
     w.u(flags);
     if (inLib) w.fixed(hash24(it.gearId!), 3);
     else {
@@ -172,9 +174,10 @@ export function encodeCompact(layout: Layout): string {
     if (labelChanged) w.str(it.label);
     if (colorChanged) w.fixed(parseInt(it.color.slice(1, 7), 16) || 0, 3);
     w.len(it.x), w.len(it.y);
-    if (hasRoom) {
-      w.u(1); // extras mask: bit0 = room
-      for (const k of ROOM_KEYS) w.len(it.room![k] ?? 0);
+    if (hasRoom || hasWeight) {
+      w.u((hasRoom ? 1 : 0) | (hasWeight ? 2 : 0)); // extras: bit0 room, bit1 weight (g)
+      if (hasRoom) for (const k of ROOM_KEYS) w.len(it.room![k] ?? 0);
+      if (hasWeight) w.u(Math.round(it.weight!));
     }
   }
 
@@ -246,6 +249,7 @@ export function decodeCompact(code: string): Layout | null {
       const x = r.len();
       const y = r.len();
             let room: PlacedItem['room'];
+      let weight = gearId ? lib.get(hash24(gearId))?.weight : undefined;
       if (flags & 128) {
         const extras = r.u();
         if (extras & 1) {
@@ -255,6 +259,7 @@ export function decodeCompact(code: string): Layout | null {
             if (v > 0) room[k] = v;
           }
         }
+        if (extras & 2) weight = r.u();
       }
       items.push({
         uid: 'i' + n.toString(36) + Math.random().toString(36).slice(2, 6),
@@ -270,6 +275,7 @@ export function decodeCompact(code: string): Layout | null {
         y,
         color,
         room,
+        weight,
       });
     }
 

@@ -6,6 +6,7 @@ import { STYLES, defaultSettings } from '../data/defaults';
 import { fmt, parseLength } from '../lib/units';
 import { baseDepth, wheelSide } from '../lib/geometry';
 import { Section } from './Section';
+import { parseWeight } from '../lib/weight';
 import { LengthInput } from './Inspector';
 import type { WheelSide } from '../types';
 
@@ -359,7 +360,7 @@ function GearThumb({ g }: { g: GearSpec }) {
 }
 
 export function submitUrl(g: GearSpec): string {
-  const json = JSON.stringify({ id: g.id.replace(/^my-/, ''), brand: g.brand, name: g.name, category: g.category, w: g.w, d: g.d, h: g.h, source: g.source ?? '' }, null, 2);
+  const json = JSON.stringify({ id: g.id.replace(/^my-/, ''), brand: g.brand, name: g.name, category: g.category, w: g.w, d: g.d, h: g.h, weight: g.weight, source: g.source ?? '' }, null, 2);
   const p = new URLSearchParams({
     template: 'gear-submission.yml',
     title: `[Gear] ${g.brand} ${g.name}`,
@@ -374,7 +375,7 @@ export function submitUrl(g: GearSpec): string {
 }
 
 function CustomGearForm({ units, initialName, onSave }: { units: Units; initialName: string; onSave: (g: GearSpec, place: boolean) => void }) {
-  const [f, setF] = useState({ brand: '', name: initialName, category: 'Misc', w: '', d: '', h: '', source: '' });
+  const [f, setF] = useState({ brand: '', name: initialName, category: 'Misc', w: '', d: '', h: '', source: '', weight: '' });
   const w = parseLength(f.w, units);
   const d = parseLength(f.d, units);
   const h = parseLength(f.h, units);
@@ -388,6 +389,7 @@ function CustomGearForm({ units, initialName, onSave }: { units: Units; initialN
     d: d!,
     h: h!,
     source: f.source.trim() || undefined,
+    weight: f.weight.trim() ? parseWeight(f.weight, units) ?? undefined : undefined,
     custom: true,
   });
   const u = units === 'in' ? 'in' : 'mm';
@@ -432,6 +434,10 @@ function CustomGearForm({ units, initialName, onSave }: { units: Units; initialN
           </label>
         ))}
       </div>
+      <label>
+        Weight ({units === 'mm' ? 'kg' : 'lb'}, optional)
+        <input value={f.weight} onChange={(e) => setF({ ...f, weight: e.target.value })} placeholder={units === 'mm' ? '0.6' : '1.3'} inputMode="decimal" />
+      </label>
       <label>
         Source (spec page link or “calipers”)
         <input value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })} />

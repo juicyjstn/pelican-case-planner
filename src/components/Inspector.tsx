@@ -7,6 +7,7 @@ import { pluckCells, type Selection } from './Editor2D';
 import { Section } from './Section';
 import { StepDiagram, stepText } from './BuildSteps';
 import { buildSteps } from '../lib/cutlist';
+import { fmtWeight, itemWeight, LIMITS, parseWeight, summarizeWeight } from '../lib/weight';
 
 interface Props {
   layout: Layout;
@@ -72,6 +73,7 @@ export function Inspector(props: Props) {
       {(layout.style === 'trekpak' || layout.style === 'padded') && <CutListPanel {...props} />}
       {(layout.style === 'trekpak' || layout.style === 'padded') && props.solve.resolved.size > 0 && <BuildStepsPanel {...props} />}
       {layout.style === 'foam' && <FoamPanel {...props} />}
+      <WeightPanel {...props} />
       <SettingsPanel {...props} />
     </aside>
   );
@@ -169,6 +171,10 @@ function ItemPanel({ item, layout, c, units, set, onSelect, viewRot }: Props & {
           </button>
         )}
       </div>
+      <label className="inline-field">
+        Weight
+        <WeightInput grams={itemWeight(item)} units={units} onCommit={(g) => upd({ weight: g })} />
+      </label>
       <div className="row">
         {(layout.style === 'trekpak' || layout.style === 'padded') && (
           <button className="btn primary" onClick={() => set((L) => ({ ...L, dividers: boxInDividers(item, L, c) }))} title="Add dividers on every open side of this item">
@@ -364,6 +370,79 @@ function BuildStepsPanel({ layout, c, solve, labelOf, units }: Props) {
         ))}
       </ol>
       <p className="hint">Measured from the face of the wall or panel to the near face of the divider. Dry-fit each piece before cutting the next.</p>
+    </Section>
+  );
+}
+
+function WeightInput({ grams, units, onCommit }: { grams: number | undefined; units: Units; onCommit: (g: number | undefined) => void }) {
+  const shown = grams != null ? fmtWeight(grams, units) : '';
+  const [text, setText] = useState(shown);
+  useEffect(() => setText(shown), [shown]);
+  return (
+    <input
+      className="len"
+      value={text}
+      placeholder={units === 'mm' ? 'kg' : 'lb'}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        if (!text.trim()) return onCommit(undefined);
+        const g = parseWeight(text, units);
+        if (g != null) onCommit(g);
+        else setText(shown);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        e.stopPropagation();
+      }}
+    />
+  );
+}
+
+function WeightPanel({ layout, c, units, onSelect }: Props) {
+  const w = summarizeWeight(layout, c);
+  const both = (g: number) => `${fmtWeight(g, units)} (${fmtWeight(g, units === 'in' ? 'mm' : 'in')})`;
+  const over = LIMITS.filter((l) => w.totalG > l.g);
+  return (
+    <Section id="weight" title="Weight" summary={fmtWeight(w.totalG, units)}>
+      <dl className="specs">
+        <div>
+          <dt>Case, empty</dt>
+          <dd>{w.caseG != null ? fmtWeight(w.caseG, units) : '—'}</dd>
+        </div>
+        <div>
+          <dt>Gear ({layout.items.length - w.missing.length} of {layout.items.length})</dt>
+          <dd>{fmtWeight(w.gearG, units)}</dd>
+        </div>
+        <div className="total">
+          <dt>Total</dt>
+          <dd>{both(w.totalG)}</dd>
+        </div>
+      </dl>
+      {w.missing.length > 0 && (
+        <p className="note warn">
+          No weight for{' '}
+          {w.missing.map((it, i) => (
+            <span key={it.uid}>
+              {i > 0 && ', '}
+              <button className="link" onClick={() => onSelect({ kind: 'item', id: it.uid })}>
+                {it.label}
+              </button>
+            </span>
+          ))}
+          . Select it to add one.
+        </p>
+      )}
+      <ul className="limits">
+        {LIMITS.map((l) => (
+          <li key={l.label} className={w.totalG > l.g ? 'over' : ''}>
+            <span>{l.label}</span>
+            <span>{fmtWeight(l.g, units)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="hint">
+        {over.length ? `Over ${over.length} of these limits. ` : ''}Case weight is Pelican's empty weight, without foam or dividers. Limits vary by airline and route; check yours.
+      </p>
     </Section>
   );
 }
