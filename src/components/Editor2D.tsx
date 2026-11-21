@@ -58,6 +58,9 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
   const [drag, setDrag] = useState<Drag | null>(null);
   const [guides, setGuides] = useState<SnapGuide[]>([]);
   const movedRef = useRef(false);
+  // Touch: active pointers, and the last two-finger distance/midpoint while pinching.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null);
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const t = layout.settings.dividerThickness;
   const ins = wallInset(layout);
@@ -176,9 +179,49 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
     setDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false });
   };
 
+  /** Track every pointer (capture phase, so items that stop propagation still count). */
+  const onAnyDown = (e: React.PointerEvent) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 2) {
+      // Second finger down: switch from dragging to pinch-zoom / two-finger pan.
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      setDrag(null);
+      setGuides([]);
+    }
+  };
+  const onAnyUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+  };
+
   const onMove = (e: React.PointerEvent) => {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.current && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const dist = Math.max(10, Math.hypot(a.x - b.x, a.y - b.y));
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const prev = pinch.current;
+      const k = mmPerPx();
+      const anchor = toView({ clientX: mx, clientY: my });
+      const r = prev.dist / dist;
+      setView((v) => {
+        const w = Math.min(Math.max(v.w * r, 40), 4000);
+        const sc = w / v.w;
+        // zoom about the fingers' midpoint, then follow the midpoint as it moves
+        return {
+          x: anchor.x - (anchor.x - v.x) * sc - (mx - prev.mx) * k,
+          y: anchor.y - (anchor.y - v.y) * sc - (my - prev.my) * k,
+          w,
+          h: v.h * sc,
+        };
+      });
+      pinch.current = { dist, mx, my };
+      return;
+    }
     const p = toLocal(e);
-    setHover(p);
+    setHover(e.pointerType === 'mouse' ? p : null);
     if (!drag) return;
     if (drag.kind === 'pan') {
       const k = mmPerPx();
@@ -252,9 +295,11 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
       className={`editor2d tool-${tool}`}
       viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
       preserveAspectRatio="xMidYMid meet"
+      onPointerDownCapture={onAnyDown}
       onPointerDown={onBgDown}
       onPointerMove={onMove}
-      onPointerUp={onUp}
+      onPointerUp={(e) => (onAnyUp(e), onUp())}
+      onPointerCancel={(e) => (onAnyUp(e), onUp())}
       onPointerLeave={() => setHover(null)}
       onDoubleClick={fit}
     >

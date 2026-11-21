@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GearSpec, Layout, PlacedItem, Units } from './types';
 import { useHistory } from './lib/history';
-import { checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
+import { boxInDividers, checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
 import { buildCutList } from './lib/cutlist';
 import { decodeHash, downloadText, normalizeLayout, safeStorage, shareUrl } from './lib/share';
 import { fmt } from './lib/units';
@@ -99,6 +99,22 @@ export default function App() {
     }
   });
   const fileRef = useRef<HTMLInputElement>(null);
+  // Narrow screens: side panels become drawers over the case, closed by default.
+  const narrow = useMediaQuery('(max-width: 900px)');
+  const [leftOpen, setLeftOpen] = useState(() => !window.matchMedia('(max-width: 900px)').matches);
+  const [rightOpen, setRightOpen] = useState(() => !window.matchMedia('(max-width: 900px)').matches);
+  useEffect(() => {
+    setLeftOpen(!narrow);
+    setRightOpen(!narrow);
+  }, [narrow]);
+  const openLeft = () => {
+    setLeftOpen((v) => !v);
+    if (narrow) setRightOpen(false);
+  };
+  const openRight = () => {
+    setRightOpen((v) => !v);
+    if (narrow) setLeftOpen(false);
+  };
 
   const setMyGear = (g: GearSpec[]) => {
     setMyGearState(g);
@@ -130,7 +146,7 @@ export default function App() {
     store.set(KEY, JSON.stringify(layout));
   }, [layout]);
   useEffect(() => {
-    if (location.hash.includes('l=')) history.replaceState(null, '', location.pathname + location.search);
+    if (/[#&][lc]=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
   }, []);
   useEffect(() => store.set('pcp.units', units), [units]);
   useEffect(() => store.set('pcp.mode', mode), [mode]);
@@ -154,6 +170,7 @@ export default function App() {
     set((L) => ({ ...L, items: [...L.items, placed] }));
     setSelection({ kind: 'item', id: placed.uid });
     setTool('select');
+    if (narrow) setLeftOpen(false); // done picking: get back to the case
   };
 
   const deleteSelection = () => {
@@ -181,6 +198,7 @@ export default function App() {
       }
       if (mod) return;
       if (e.key === 'Escape') {
+        if (document.querySelector('.menu')) return; // the open menu handles its own Escape
         setTool('select');
         setSelection(null);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -262,6 +280,12 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
+        <button className={`btn icon panel-toggle ${leftOpen ? 'on' : ''}`} onClick={openLeft} aria-label="Case and gear panel" aria-expanded={leftOpen} title="Case & gear">
+          <svg viewBox="0 0 24 24" aria-hidden>
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M9 4v16" />
+          </svg>
+        </button>
         <div className="brand">
           <svg viewBox="0 0 32 24" className="logo" aria-hidden>
             <rect x="1" y="3" width="30" height="20" rx="4" />
@@ -270,13 +294,7 @@ export default function App() {
           </svg>
           <input className="name" value={layout.name} placeholder="Name your case" onChange={(e) => set((L) => ({ ...L, name: e.target.value }), false)} aria-label="Case name" />
         </div>
-        <div className="seg" role="group" aria-label="View">
-          {(['2d', 'split', '3d'] as const).map((m) => (
-            <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
-              {m === 'split' ? '2D + 3D' : m.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        <ViewSwitch mode={mode} setMode={setMode} className="view-top" />
         <div className="actions">
           <div className="undo-group" role="group" aria-label="History">
             <button className="btn icon" onClick={undo} disabled={!hist.canUndo} title={`Undo (${MOD}Z)`} aria-label="Undo">
@@ -292,6 +310,13 @@ export default function App() {
               </svg>
             </button>
           </div>
+          <button className={`btn icon panel-toggle ${rightOpen ? 'on' : ''}`} onClick={openRight} aria-label="Details panel" aria-expanded={rightOpen} title="Problems, cut list and settings">
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M15 4v16" />
+            </svg>
+            {errors > 0 && <span className="badge">{errors}</span>}
+          </button>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => (loadFile(e.target.files?.[0]), (e.target.value = ''))} />
           <AppMenu
             units={units}
@@ -309,23 +334,34 @@ export default function App() {
         </div>
       </header>
 
-      <Sidebar layout={layout} c={c} units={units} myGear={myGear} setMyGear={setMyGear} set={set} onAddGear={addGear} />
+      <div className={`drawer left ${leftOpen ? 'open' : ''}`} aria-hidden={!leftOpen}>
+        <div className="drawer-head">
+          <span>Case &amp; gear</span>
+          <button className="btn icon" onClick={() => setLeftOpen(false)} aria-label="Close case and gear panel">
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="m15 6-6 6 6 6" />
+            </svg>
+          </button>
+        </div>
+        <Sidebar layout={layout} c={c} units={units} myGear={myGear} setMyGear={setMyGear} set={set} onAddGear={addGear} />
+      </div>
 
       <main className={`stage mode-${mode}`}>
+        <ViewSwitch mode={mode} setMode={setMode} className="view-stage" />
         {mode !== '3d' && (
           <div className="pane pane2d">
             <div className="toolbar">
               <div className="seg">
                 <button className={tool === 'select' ? 'on' : ''} onClick={() => setTool('select')} title="Select and move (Esc)">
-                  ⬚ Move
+                  ⬚<span className="lbl"> Move</span>
                 </button>
                 {usesDividers && (
                   <>
                     <button className={tool === 'divider-h' ? 'on' : ''} onClick={() => setTool(tool === 'divider-h' ? 'select' : 'divider-h')} title="Click to place a left–right divider (H)">
-                      ━ Divider
+                      ━<span className="lbl"> Divider</span>
                     </button>
                     <button className={tool === 'divider-v' ? 'on' : ''} onClick={() => setTool(tool === 'divider-v' ? 'select' : 'divider-v')} title="Click to place a top–bottom divider (V)">
-                      ┃ Divider
+                      ┃<span className="lbl"> Divider</span>
                     </button>
                   </>
                 )}
@@ -358,7 +394,8 @@ export default function App() {
             <div className="toolbar">
               <div className="seg" role="group" aria-label="Case pose">
                 <button className={pose === 'flat' ? 'on' : ''} onClick={() => setPose('flat')} title="Lying flat, lid open">
-                  Lying flat
+                  <span className="lbl">Lying flat</span>
+                  <span className="lbl-narrow">Flat</span>
                 </button>
                 <button className={pose === 'standing' ? 'on' : ''} onClick={() => setPose('standing')} title="Standing on the edge at the bottom of the plan view">
                   Standing
@@ -374,11 +411,13 @@ export default function App() {
                   }}
                   title="Stand the case on its wheels, like you'd roll it"
                 >
-                  Stand on wheels
+                  <span className="lbl">Stand on wheels</span>
+                  <span className="lbl-narrow">On wheels</span>
                 </button>
               )}
               <label className="check">
-                <input type="checkbox" checked={showLid} onChange={(e) => setShowLid(e.target.checked)} /> Show lid space
+                <input type="checkbox" checked={showLid} onChange={(e) => setShowLid(e.target.checked)} /> <span className="lbl">Show lid space</span>
+                <span className="lbl-narrow">Lid</span>
               </label>
               <span className="tip">{pose === 'standing' ? 'Stands on the edge at the bottom of the plan · rotate to choose' : 'Drag to orbit · scroll to zoom · right-drag to pan'}</span>
             </div>
@@ -387,10 +426,47 @@ export default function App() {
             </Suspense>
           </div>
         )}
-        {errors > 0 && <div className="stage-badge">{errors} fit problem{errors > 1 ? 's' : ''}</div>}
+        {errors > 0 && !(narrow && selection) && (
+          <button className="stage-badge" onClick={() => (setRightOpen(true), narrow && setLeftOpen(false))}>
+            {errors} fit problem{errors > 1 ? 's' : ''}
+          </button>
+        )}
+        {narrow && selection && (
+          <SelectionBar
+            layout={layout}
+            selection={selection}
+            labelOf={labelOf}
+            onRotate={() => set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, rot: !i.rot } : i)) }))}
+            onBoxIn={() => {
+              const it = layout.items.find((i) => i.uid === selection.id);
+              if (it) set((L) => ({ ...L, dividers: boxInDividers(it, L, c) }));
+            }}
+            onDuplicate={() => {
+              const it = layout.items.find((i) => i.uid === selection.id);
+              if (!it) return;
+              const copy = { ...it, uid: uid('i'), x: it.x + 10, y: it.y + 10 };
+              set((L) => ({ ...L, items: [...L.items, copy] }));
+              setSelection({ kind: 'item', id: copy.uid });
+            }}
+            onDelete={deleteSelection}
+            onDetails={() => (setRightOpen(true), setLeftOpen(false))}
+            onClose={() => setSelection(null)}
+          />
+        )}
       </main>
 
-      <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} />
+      <div className={`drawer right ${rightOpen ? 'open' : ''}`} aria-hidden={!rightOpen}>
+        <div className="drawer-head">
+          <span>Details</span>
+          <button className="btn icon" onClick={() => setRightOpen(false)} aria-label="Close details panel">
+            <svg viewBox="0 0 24 24" aria-hidden>
+              <path d="m9 6 6 6-6 6" />
+            </svg>
+          </button>
+        </div>
+        <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} />
+      </div>
+      {narrow && (leftOpen || rightOpen) && <div className="backdrop" onClick={() => (setLeftOpen(false), setRightOpen(false))} />}
 
       {toast && <div className="toast">{toast}</div>}
 
@@ -415,6 +491,77 @@ function RotateControl({ rot, turn }: { rot: ViewRot; turn: (by: 90 | -90) => vo
           <path d="M21 3v5h-5" />
         </svg>
       </button>
+    </div>
+  );
+}
+
+function useMediaQuery(q: string): boolean {
+  const [m, setM] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const on = () => setM(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [q]);
+  return m;
+}
+
+function ViewSwitch({ mode, setMode, className }: { mode: '2d' | 'split' | '3d'; setMode: (m: '2d' | 'split' | '3d') => void; className: string }) {
+  return (
+    <div className={`seg ${className}`} role="group" aria-label="View">
+      {(['2d', 'split', '3d'] as const).map((m) => (
+        <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+          {m === 'split' ? '2D + 3D' : m.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Touch-friendly actions for the selected item or divider, docked over the case on small screens. */
+function SelectionBar(p: {
+  layout: Layout;
+  selection: NonNullable<Selection>;
+  labelOf: Map<string, string>;
+  onRotate: () => void;
+  onBoxIn: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onDetails: () => void;
+  onClose: () => void;
+}) {
+  const item = p.selection.kind === 'item' ? p.layout.items.find((i) => i.uid === p.selection.id) : undefined;
+  const usesDividers = p.layout.style === 'trekpak' || p.layout.style === 'padded';
+  const title = item ? item.label : `Divider ${p.labelOf.get(p.selection.id) ?? ''}`;
+  return (
+    <div className="selbar" role="toolbar" aria-label="Selection">
+      <span className="selbar-title">{title}</span>
+      <div className="selbar-actions">
+        {item && (
+          <button className="btn small" onClick={p.onRotate}>
+            <svg viewBox="0 0 24 24" className="inline-icon" aria-hidden><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg> 90°
+          </button>
+        )}
+        {item && usesDividers && (
+          <button className="btn small" onClick={p.onBoxIn}>
+            Box in
+          </button>
+        )}
+        {item && (
+          <button className="btn small" onClick={p.onDuplicate}>
+            Copy
+          </button>
+        )}
+        <button className="btn small danger" onClick={p.onDelete}>
+          Delete
+        </button>
+        <button className="btn small primary" onClick={p.onDetails}>
+          Edit
+        </button>
+        <button className="btn small icon-only" onClick={p.onClose} aria-label="Deselect">
+          ✕
+        </button>
+      </div>
     </div>
   );
 }
