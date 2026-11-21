@@ -6,6 +6,7 @@ import { STYLES, defaultSettings } from '../data/defaults';
 import { fmt, parseLength } from '../lib/units';
 import { baseDepth, wheelSide } from '../lib/geometry';
 import { Section } from './Section';
+import { LengthInput } from './Inspector';
 import type { WheelSide } from '../types';
 
 export const REPO = 'juicyjstn/pelican-case-planner';
@@ -38,6 +39,7 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
       ...L,
       caseId: id,
       wheels: undefined, // back to the new case's own default
+      caseOverride: undefined, // measurements belong to the old case
       customCase: id === 'custom' ? (L.customCase ?? { l: c.l, w: c.w, d: c.d, lid: c.lid, base: c.base }) : L.customCase,
     }));
   const editCustom = (key: 'l' | 'w' | 'd' | 'lid' | 'base', text: string) => {
@@ -46,7 +48,7 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
     if (v != null && v > 0) set((L) => ({ ...L, customCase: { ...L.customCase!, [key]: v } }));
   };
   return (
-    <Section id="case" title={<><span className="step">1</span> Case</>} summary={`${c.model}${c.line === 'Air' ? ' Air' : ''}`}>
+    <Section id="case" title={<><span className="step">1</span> Case</>} summary={`${c.model}${c.line === 'Air' ? ' Air' : ''}${c.measured ? ' · measured' : ''}`}>
       <select value={layout.caseId} onChange={(e) => setCase(e.target.value)} aria-label="Case model">
         {(['Protector', 'Air'] as const).map((line) => (
           <optgroup key={line} label={`Pelican ${line}`}>
@@ -84,7 +86,7 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
       ) : (
         <dl className="specs">
           <div>
-            <dt>Interior</dt>
+            <dt>Interior{c.measured && <span className="measured-badge">measured</span>}</dt>
             <dd>
               {fmt(c.l, units)} × {fmt(c.w, units)}
             </dd>
@@ -109,6 +111,7 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
           {c.notes && <p className="note">{c.notes}</p>}
         </dl>
       )}
+      {!custom && <MeasuredOverride layout={layout} c={c} units={units} set={set} />}
       <div className="wheels-row">
         <span className="wheels-label">Wheels</span>
         <div className="seg small" role="group" aria-label="Wheel end">
@@ -126,6 +129,57 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
         </div>
       </div>
     </Section>
+  );
+}
+
+/** Replace Pelican's published interior numbers with the user's own tape-measure readings. */
+function MeasuredOverride({ layout, c, units, set }: { layout: Layout; c: CaseSpec; units: Units; set: Props['set'] }) {
+  const [open, setOpen] = useState(!!c.measured);
+  const fields = [
+    ['l', 'Interior length'],
+    ['w', 'Interior width'],
+    ['base', 'Base depth'],
+    ['lid', 'Lid depth'],
+  ] as const;
+  const val = (k: (typeof fields)[number][0]) => (k === 'base' ? baseDepth(c) : k === 'lid' ? c.lid ?? 0 : c[k]);
+  const pub = c.published;
+  if (!open)
+    return (
+      <button className="link small-link" onClick={() => setOpen(true)}>
+        My case measures differently…
+      </button>
+    );
+  return (
+    <div className="measured">
+      <div className="measured-head">
+        <span>Your measurements</span>
+        {c.measured && <span className="measured-badge">in use</span>}
+      </div>
+      <div className="grid2">
+        {fields.map(([k, label]) => {
+          const changed = layout.caseOverride?.[k] != null;
+          const was = pub ? (k === 'base' ? pub.base : k === 'lid' ? pub.lid : pub[k]) : null;
+          return (
+            <label key={k} className={changed ? 'changed' : ''}>
+              {label}
+              <LengthInput mm={val(k)} units={units} min={1} onCommit={(v) => set((L) => ({ ...L, caseOverride: { ...L.caseOverride, [k]: v } }))} />
+              {changed && was != null && <small className="was">Pelican: {fmt(was, units)}</small>}
+            </label>
+          );
+        })}
+      </div>
+      <p className="hint">Measure wall to wall at the floor of the base, below the lip. The planner, cut list and template all use these numbers.</p>
+      <div className="row">
+        {c.measured && (
+          <button className="btn small" onClick={() => set((L) => ({ ...L, caseOverride: undefined }))}>
+            Use Pelican's numbers
+          </button>
+        )}
+        <button className="btn small" onClick={() => setOpen(false)}>
+          Hide
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -34,6 +34,7 @@ export function normalizeLayout(raw: unknown): Layout | null {
     name: typeof o.name === 'string' && o.name !== 'My case' ? o.name : '',
     caseId: o.caseId,
     customCase: o.customCase,
+    caseOverride: o.caseOverride && typeof o.caseOverride === 'object' ? o.caseOverride : undefined,
     wheels: o.wheels === 'left' || o.wheels === 'right' || o.wheels === 'none' ? o.wheels : undefined,
     style: o.style ?? 'trekpak',
     items: Array.isArray(o.items) ? o.items : [],

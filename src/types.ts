@@ -4,6 +4,7 @@ export type Units = 'in' | 'mm';
 export type DividerStyle = 'none' | 'foam' | 'padded' | 'trekpak';
 export type Orientation = 'flat' | 'side' | 'end';
 export type WheelSide = 'left' | 'right' | 'none';
+export type CaseOverride = { l?: number; w?: number; base?: number; lid?: number };
 
 export interface CaseSpec {
   id: string;
@@ -29,6 +30,10 @@ export interface CaseSpec {
   wheels?: number;
   source?: string;
   notes?: string;
+  /** true when the user's own measurements replace some published numbers */
+  measured?: boolean;
+  /** Pelican's numbers, kept for comparison when `measured` */
+  published?: { l: number; w: number; base: number | null; lid: number | null };
 }
 
 export interface GearSpec {
@@ -107,6 +112,8 @@ export interface Layout {
   name: string;
   caseId: string;
   customCase?: { l: number; w: number; d: number; lid: number | null; base: number | null };
+  /** the user's own tape-measure numbers for a catalogue case (any subset) */
+  caseOverride?: CaseOverride;
   /** which short end the wheels are on; undefined = the case's default */
   wheels?: WheelSide;
   style: DividerStyle;

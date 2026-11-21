@@ -11,7 +11,22 @@ export function getCase(layout: Layout): CaseSpec {
   if (layout.caseId === 'custom' && layout.customCase) {
     return { id: 'custom', model: 'Custom', line: 'Custom', trekpak: true, ...layout.customCase };
   }
-  return CASES.find((c) => c.id === layout.caseId) ?? CASES[0];
+  const spec = CASES.find((c) => c.id === layout.caseId) ?? CASES[0];
+  const o = layout.caseOverride;
+  if (!o || !Object.values(o).some((v) => v != null)) return spec;
+  // The user's tape measure wins over the catalogue.
+  const base = o.base ?? spec.base;
+  const lid = o.lid ?? spec.lid;
+  return {
+    ...spec,
+    l: o.l ?? spec.l,
+    w: o.w ?? spec.w,
+    base,
+    lid,
+    d: o.base != null || o.lid != null ? (base ?? spec.d - (lid ?? 0)) + (lid ?? 0) : spec.d,
+    measured: true,
+    published: { l: spec.l, w: spec.w, base: spec.base, lid: spec.lid },
+  };
 }
 
 /** Base (bottom shell) depth; falls back to total minus lid when not published. */

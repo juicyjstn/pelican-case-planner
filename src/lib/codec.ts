@@ -6,7 +6,7 @@
  * style's defaults. A typical layout encodes to well under 100 characters.
  * Photos are never included.
  */
-import type { Divider, DividerStyle, Layout, Orientation, PlacedItem, Settings, WheelSide } from '../types';
+import type { CaseOverride, Divider, DividerStyle, Layout, Orientation, PlacedItem, Settings, WheelSide } from '../types';
 import { GEAR } from '../data/gear';
 import { colorFor, defaultSettings } from '../data/defaults';
 
@@ -14,6 +14,7 @@ const VERSION = 2;
 const STYLES: DividerStyle[] = ['none', 'foam', 'padded', 'trekpak'];
 const ORIENTS: Orientation[] = ['flat', 'side', 'end'];
 const WHEELS: WheelSide[] = ['none', 'left', 'right'];
+const OVERRIDE_KEYS = ['l', 'w', 'base', 'lid'] as const;
 const SETTING_KEYS: (keyof Settings)[] = [
   'floorPad',
   'clearance',
@@ -180,8 +181,16 @@ export function encodeCompact(layout: Layout): string {
     if (aRef !== undefined) w.u(aRef);
     if (bRef !== undefined) w.u(bRef);
   }
-  // Trailing, optional: wheel end override (older links simply end before this).
-  if (layout.wheels) w.u(WHEELS.indexOf(layout.wheels) + 1);
+  // Trailing, optional (older links simply end before these):
+  //   wheel code (0 = case default), then an extension bitmask and its fields.
+  const ov = layout.caseOverride;
+  const hasOv = !!ov && Object.values(ov).some((v) => v != null);
+  const ext = hasOv ? 1 : 0;
+  if (layout.wheels || ext) w.u(layout.wheels ? WHEELS.indexOf(layout.wheels) + 1 : 0);
+  if (ext) {
+    w.u(ext);
+    if (hasOv) for (const k of OVERRIDE_KEYS) w.len(ov![k] ?? -0.1);
+  }
   return b64url(w.bytes);
 }
 
@@ -255,8 +264,23 @@ export function decodeCompact(code: string): Layout | null {
       const b = f & 4 ? { kind: 'div' as const, id: uids[r.u()] } : { kind: 'wall' as const };
       dividers.push({ uid: uids[n], axis: f & 1 ? 'v' : 'h', pos, a, b });
     }
-    const wheels = r.more() ? WHEELS[r.u() - 1] : undefined;
-    return { version: 1, name, caseId, customCase, style, items, dividers, settings, wheels };
+    let wheels: WheelSide | undefined;
+    let caseOverride: CaseOverride | undefined;
+    if (r.more()) {
+      const code = r.u();
+      wheels = code ? WHEELS[code - 1] : undefined;
+    }
+    if (r.more()) {
+      const ext = r.u();
+      if (ext & 1) {
+        caseOverride = {};
+        for (const k of OVERRIDE_KEYS) {
+          const v = r.len();
+          if (v >= 0) caseOverride[k] = v;
+        }
+      }
+    }
+    return { version: 1, name, caseId, customCase, style, items, dividers, settings, wheels, caseOverride };
   } catch {
     return null;
   }
