@@ -1,0 +1,33 @@
+name: Gear submission
+description: Suggest a piece of gear for the built-in library
+title: "[Gear] "
+labels: ["gear-submission"]
+body:
+  - type: input
+    id: brand
+    attributes: { label: Brand }
+    validations: { required: true }
+  - type: input
+    id: name
+    attributes: { label: Model name }
+    validations: { required: true }
+  - type: input
+    id: category
+    attributes: { label: Category }
+  - type: input
+    id: dims
+    attributes:
+      label: Dimensions (W x D x H, mm)
+      description: Width left-right, depth front-back, height, as it sits on a desk.
+    validations: { required: true }
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: Link to the manufacturer spec page, or say "measured with calipers".
+    validations: { required: true }
+  - type: textarea
+    id: json
+    attributes:
+      label: Library entry (auto-filled by the app)
+      render: json
