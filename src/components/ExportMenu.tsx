@@ -5,6 +5,7 @@ interface Props {
   paper: Paper;
   onPrint: (paper: Paper) => void;
   onSvg: () => void;
+  onJson: () => void;
 }
 
 const SIZES: { id: Paper; label: string; detail: string }[] = [
@@ -12,8 +13,8 @@ const SIZES: { id: Paper; label: string; detail: string }[] = [
   { id: 'a4', label: 'A4', detail: '210 × 297 mm' },
 ];
 
-/** Export button: Print 1:1 (pick a paper size) or download a full-size SVG. */
-export function ExportMenu({ paper, onPrint, onSvg }: Props) {
+/** Export button: Print 1:1 (pick a paper size), a full-size SVG, or the layout as JSON. */
+export function ExportMenu({ paper, onPrint, onSvg, onJson }: Props) {
   const [open, setOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -83,6 +84,19 @@ export function ExportMenu({ paper, onPrint, onSvg }: Props) {
             <span>
               <b>SVG</b>
               <small>Full-size file for a plotter or print shop</small>
+            </span>
+          </button>
+          <button
+            className="menu-item"
+            role="menuitem"
+            onClick={() => {
+              close();
+              onJson();
+            }}
+          >
+            <span>
+              <b>Export JSON</b>
+              <small>Layout file you can reopen with Open</small>
             </span>
           </button>
         </div>

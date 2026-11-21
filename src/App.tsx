@@ -277,13 +277,10 @@ export default function App() {
             Open
           </button>
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => (loadFile(e.target.files?.[0]), (e.target.value = ''))} />
-          <button className="btn" onClick={saveFile}>
-            Save
-          </button>
           <button className="btn" onClick={share}>
             Share link
           </button>
-          <ExportMenu paper={paper} onPrint={printTemplate} onSvg={downloadSvg} />
+          <ExportMenu paper={paper} onPrint={printTemplate} onSvg={downloadSvg} onJson={saveFile} />
         </div>
       </header>
 
