@@ -41,7 +41,7 @@
   --warn: #b86e00;
   --good: #1f9d63;
   --stage: #e2e5e9;
-  color-scheme: light;
+  color-scheme: only light; /* 'only' stops browsers force-darkening the light theme */
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
@@ -57,7 +57,7 @@
     --warn: #b86e00;
     --good: #1f9d63;
     --stage: #e2e5e9;
-    color-scheme: light;
+    color-scheme: only light; /* 'only' stops browsers force-darkening the light theme */
   }
 }
 * { box-sizing: border-box; }
