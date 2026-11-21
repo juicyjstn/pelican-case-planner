@@ -6,7 +6,9 @@ import { fmt, fmtBoth, parseLength } from '../lib/units';
 import { pluckCells, type Selection } from './Editor2D';
 import { Section } from './Section';
 import { StepDiagram, stepText } from './BuildSteps';
-import { buildSteps } from '../lib/cutlist';
+import { buildSteps, piecesOf, planPacks } from '../lib/cutlist';
+import { CUTTER, PIN_PAK, TREKPAK } from '../data/trekpak';
+import { inch } from '../lib/units';
 import { fmtWeight, itemWeight, LIMITS, parseWeight, summarizeWeight } from '../lib/weight';
 
 interface Props {
@@ -72,6 +74,7 @@ export function Inspector(props: Props) {
       {div && <DividerPanel {...props} id={div.uid} />}
       {(layout.style === 'trekpak' || layout.style === 'padded') && <CutListPanel {...props} />}
       {(layout.style === 'trekpak' || layout.style === 'padded') && props.solve.resolved.size > 0 && <BuildStepsPanel {...props} />}
+      {layout.style === 'trekpak' && <ShoppingPanel {...props} />}
       {layout.style === 'foam' && <FoamPanel {...props} />}
       <WeightPanel {...props} />
       <SettingsPanel {...props} />
@@ -350,6 +353,99 @@ function CutListPanel({ layout, c, cuts, units }: Props) {
           )}
         </>
       )}
+    </Section>
+  );
+}
+
+function ShoppingPanel({ layout, c, cuts, units }: Props) {
+  const [haveKit, setHaveKit] = useState(false);
+  const tp = TREKPAK[c.id];
+  if (!tp)
+    return (
+      <Section id="shop" title="What to buy" summary="no TrekPak">
+        <p className="hint">Pelican doesn't sell TrekPak for the {c.model}. You'd need spare strips from a case with the same divider height; check the cut list against their length.</p>
+      </Section>
+    );
+  void layout;
+  const pieces = piecesOf(cuts);
+  const pins = cuts.reduce((n, x) => n + x.pins, 0);
+  const strips = tp.spare.stripsIn.map(inch);
+  const usd = (v: number | null) => (v == null ? 'price not listed' : `$${v.toFixed(2)}`);
+  const lines: { qty: number; sku: string; what: string; url: string; price: number | null }[] = [];
+  let estimate = false;
+  let spareFor = pieces;
+  let pinsNeeded = pins;
+  if (!haveKit) {
+    const k = tp.kit;
+    const walls = k.walls ? `${k.walls} perimeter panel${k.walls > 1 ? 's' : ''}` : 'perimeter panels';
+    lines.push({ qty: 1, sku: k.sku, what: `Full kit: ${walls}, ${k.dividers ?? 'several'} dividers, ${k.pins ?? 'some'} pins, cutter, foam`, url: k.url, price: k.priceUsd });
+    // Kit divider lengths aren't published: assume they cover that many of the longest pieces.
+    if (k.dividers != null) {
+      spareFor = [...pieces].sort((a, b) => b.length - a.length).slice(k.dividers);
+      estimate = pieces.length > 0;
+    } else spareFor = [];
+    pinsNeeded = Math.max(0, pins - (k.pins ?? pins));
+  }
+  const plan = spareFor.length ? planPacks(spareFor, strips) : { packs: 0, strips: [], oversize: [] as string[] };
+  if (plan.packs)
+    lines.push({ qty: plan.packs, sku: tp.spare.sku, what: `Spare dividers (${tp.spare.stripsIn.map((x) => `${x}"`).join(' + ')} per pack)`, url: tp.spare.url, price: tp.spare.priceUsd });
+  const pinPaks = Math.ceil(pinsNeeded / PIN_PAK.pins);
+  if (pinPaks) lines.push({ qty: pinPaks, sku: PIN_PAK.sku, what: 'Pin Pak (10 pins + pull tabs)', url: PIN_PAK.url, price: PIN_PAK.priceUsd });
+  const total = lines.reduce((sum, l) => sum + (l.price ?? 0) * l.qty, 0);
+  const unpriced = lines.some((l) => l.price == null);
+  const count = lines.reduce((n, l) => n + l.qty, 0);
+  return (
+    <Section id="shop" title="What to buy" summary={count ? `${count} item${count > 1 ? 's' : ''}` : 'nothing'}>
+      <div className="seg small" role="group" aria-label="Starting point">
+        <button className={!haveKit ? 'on' : ''} onClick={() => setHaveKit(false)}>
+          Starting fresh
+        </button>
+        <button className={haveKit ? 'on' : ''} onClick={() => setHaveKit(true)}>
+          I have the kit
+        </button>
+      </div>
+      {lines.length === 0 ? (
+        <p className="hint">{pieces.length ? 'Nothing extra needed.' : 'Add dividers to see what to buy.'}</p>
+      ) : (
+        <ul className="shop">
+          {lines.map((l) => (
+            <li key={l.sku}>
+              <span className="qty">{l.qty}×</span>
+              <span className="what">
+                <a href={l.url} target="_blank" rel="noreferrer">
+                  {l.sku} ↗
+                </a>
+                <small>{l.what}</small>
+              </span>
+              <span className="price">{usd(l.price == null ? null : l.price * l.qty)}</span>
+            </li>
+          ))}
+          <li className="sum">
+            <span />
+            <span className="what">Total{unpriced ? ' (some prices not listed)' : ''}</span>
+            <span className="price">${total.toFixed(2)}</span>
+          </li>
+        </ul>
+      )}
+      {plan.oversize.length > 0 && (
+        <p className="note warn">
+          {plan.oversize.join(', ')} {plan.oversize.length > 1 ? 'are' : 'is'} longer than the {Math.max(...tp.spare.stripsIn)}" spare strips. Cut {plan.oversize.length > 1 ? 'them' : 'it'} from a kit divider instead.
+        </p>
+      )}
+      <p className="hint">
+        {haveKit
+          ? `Spares cover all ${pieces.length} pieces (${fmt(pieces.reduce((sum, p) => sum + p.length, 0), units)} in total) and ${pins} pin${pins === 1 ? '' : 's'}. `
+          : estimate
+            ? `Estimate: the kit's ${tp.kit.dividers} dividers come in lengths Pelican doesn't publish, so this assumes they cover your ${tp.kit.dividers} longest pieces. `
+            : tp.kit.dividers == null
+              ? "Pelican doesn't list this kit's contents, so check it covers your pieces and pins. "
+              : ''}
+        Lost the cutter?{' '}
+        <a href={CUTTER.url} target="_blank" rel="noreferrer">
+          {CUTTER.sku}
+        </a>{' '}
+        is {usd(CUTTER.priceUsd)}. List prices from pelican.com, Nov 2026.
+      </p>
     </Section>
   );
 }
