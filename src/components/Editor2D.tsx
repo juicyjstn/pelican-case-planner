@@ -4,6 +4,7 @@ import {
   footprint,
   heal,
   itemRect,
+  overlaps,
   refit,
   snapDividerPos,
   snapItem,
@@ -38,17 +39,21 @@ interface Props {
   rot: ViewRot;
   /** label each compartment with its inside size */
   showBays?: boolean;
+  /** every selected item (shift-click or box-select adds more) */
+  selectedIds: string[];
+  onSelectItems: (ids: string[], primary?: string) => void;
 }
 
 const SHELL = 22; // drawn wall thickness, mm (visual only)
 const RULER = 26;
 
 type Drag =
-  | { kind: 'item'; id: string; dx: number; dy: number; moved: boolean }
+  | { kind: 'item'; id: string; dx: number; dy: number; moved: boolean; group: { uid: string; x: number; y: number }[]; x0: number; y0: number }
+  | { kind: 'marquee'; a: { x: number; y: number }; b: { x: number; y: number }; add: string[] }
   | { kind: 'divider'; id: string; moved: boolean }
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number; moved: boolean };
 
-export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selection, onSelect, set, checkpoint, rot, showBays = true }: Props) {
+export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selection, onSelect, set, checkpoint, rot, showBays = true, selectedIds, onSelectItems }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const caseRef = useRef<SVGGElement>(null);
   const turned = rot === 90 || rot === 270;
@@ -133,9 +138,20 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
     e.stopPropagation();
     (e.target as Element).setPointerCapture?.(e.pointerId);
     const p = toLocal(e);
-    onSelect({ kind: 'item', id: it.uid });
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      // Add to / remove from the selection; no drag.
+      const has = selectedIds.includes(it.uid);
+      const next = has ? selectedIds.filter((id) => id !== it.uid) : [...selectedIds, it.uid];
+      onSelectItems(next, has ? next[next.length - 1] : it.uid);
+      return;
+    }
+    // Dragging one of several selected items moves them all.
+    const ids = selectedIds.includes(it.uid) && selectedIds.length > 1 ? selectedIds : [it.uid];
+    if (ids.length > 1) onSelectItems(ids, it.uid);
+    else onSelect({ kind: 'item', id: it.uid });
     movedRef.current = false;
-    setDrag({ kind: 'item', id: it.uid, dx: p.x - it.x, dy: p.y - it.y, moved: false });
+    const group = layout.items.filter((i) => ids.includes(i.uid)).map((i) => ({ uid: i.uid, x: i.x, y: i.y }));
+    setDrag({ kind: 'item', id: it.uid, dx: p.x - it.x, dy: p.y - it.y, moved: false, group, x0: it.x, y0: it.y });
   };
 
   const onDividerDown = (e: React.PointerEvent, d: ResolvedDivider) => {
@@ -180,6 +196,11 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
       return;
     }
     (e.target as Element).setPointerCapture?.(e.pointerId);
+    if (e.shiftKey) {
+      // Shift-drag on empty space: box-select.
+      setDrag({ kind: 'marquee', a: p, b: p, add: selectedIds });
+      return;
+    }
     setDrag({ kind: 'pan', sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false });
   };
 
@@ -235,6 +256,10 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
       setView((v) => ({ ...v, x: nx, y: ny }));
       return;
     }
+    if (drag.kind === 'marquee') {
+      setDrag({ ...drag, b: p });
+      return;
+    }
     if (!drag.moved && !movedRef.current) {
       // Guard with a ref: several pointermoves can arrive before React re-renders.
       movedRef.current = true;
@@ -245,9 +270,15 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
     if (drag.kind === 'item') {
       const it = layout.items.find((i) => i.uid === drag.id);
       if (!it) return;
-      const s = snapItem(it, p.x - drag.dx, p.y - drag.dy, layout, c, solve.resolved, threshold);
+      // Snap the grabbed item against everything not being moved; the rest follow by the same amount.
+      const moving = new Set(drag.group.map((g) => g.uid));
+      const others = { ...layout, items: layout.items.filter((i) => i.uid === it.uid || !moving.has(i.uid)) };
+      const s = snapItem(it, p.x - drag.dx, p.y - drag.dy, others, c, solve.resolved, threshold);
       setGuides(s.guides);
-      set((L) => ({ ...L, items: L.items.map((i) => (i.uid === it.uid ? { ...i, x: s.x, y: s.y } : i)) }), false);
+      const ddx = s.x - drag.x0;
+      const ddy = s.y - drag.y0;
+      const start = new Map(drag.group.map((g) => [g.uid, g]));
+      set((L) => ({ ...L, items: L.items.map((i) => (start.has(i.uid) ? { ...i, x: start.get(i.uid)!.x + ddx, y: start.get(i.uid)!.y + ddy } : i)) }), false);
     } else if (drag.kind === 'divider') {
       const d = solve.resolved.get(drag.id);
       if (!d) return;
@@ -262,6 +293,12 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
 
   const onUp = () => {
     if (drag?.kind === 'pan' && !drag.moved) onSelect(null);
+    if (drag?.kind === 'marquee') {
+      const m = { x: Math.min(drag.a.x, drag.b.x), y: Math.min(drag.a.y, drag.b.y), w: Math.abs(drag.a.x - drag.b.x), h: Math.abs(drag.a.y - drag.b.y) };
+      const hit = layout.items.filter((i) => overlaps(itemRect(i), m)).map((i) => i.uid);
+      const ids = [...new Set([...drag.add, ...hit])];
+      onSelectItems(ids);
+    }
     if (drag?.kind === 'divider' && drag.moved) {
       set((L) => ({ ...L, dividers: heal(L.dividers, c, t, ins) }), false);
     }
@@ -434,7 +471,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
       {/* gear */}
       {layout.items.map((it) => {
         const f = footprint(it);
-        const sel = selection?.kind === 'item' && selection.id === it.uid;
+        const sel = selectedIds.includes(it.uid) || (selection?.kind === 'item' && selection.id === it.uid);
         const err = errorTargets.has(it.uid);
         const warn = warnTargets.has(it.uid);
         const small = Math.min(f.w, f.d);
@@ -500,6 +537,17 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
           ) : null;
         })}
 
+      {drag?.kind === 'marquee' && (
+        <rect
+          x={Math.min(drag.a.x, drag.b.x)}
+          y={Math.min(drag.a.y, drag.b.y)}
+          width={Math.abs(drag.a.x - drag.b.x)}
+          height={Math.abs(drag.a.y - drag.b.y)}
+          className="marquee"
+          pointerEvents="none"
+        />
+      )}
+
       {showBays &&
         bays.map((b, i) => {
           if (!b.rectangular) return null;
@@ -526,7 +574,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
           );
         })}
 
-      {selectedItem && <GapReadout item={selectedItem} layout={layout} c={c} solve={solve} units={units} fs={fs} up={up} />}
+      {selectedItem && selectedIds.length <= 1 && <GapReadout item={selectedItem} layout={layout} c={c} solve={solve} units={units} fs={fs} up={up} />}
 
       {guides.map((g, i) =>
         g.axis === 'x' ? (

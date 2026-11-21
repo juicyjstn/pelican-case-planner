@@ -3,13 +3,14 @@ import { flushSync } from 'react-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GearSpec, Layout, PlacedItem, Units } from './types';
 import { useHistory } from './lib/history';
-import { autoDivide, boxInDividers, rotateRoom, checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
+import { autoDivide, boxInDividers, itemRect, rotateRoom, checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
 import { buildCutList } from './lib/cutlist';
 import { decodeHash, downloadText, normalizeLayout, safeStorage, shareUrl } from './lib/share';
 import { fmt } from './lib/units';
 import { colorFor, defaultSettings } from './data/defaults';
 import { GEAR } from './data/gear';
-import { Editor2D, screenDeltaToCase, type Selection, type Tool, type ViewRot } from './components/Editor2D';
+import { Editor2D, screenDeltaToCase, toScreen, type Selection, type Tool, type ViewRot } from './components/Editor2D';
+import type { AlignOp } from './components/Inspector';
 import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { PrintSheets, TemplateArt, type Paper } from './components/PrintSheets';
@@ -79,7 +80,19 @@ export default function App() {
   const [units, setUnits] = useState<Units>(() => (store.get('pcp.units') as Units) || 'in');
   const [mode, setMode] = useState<'2d' | 'split' | '3d'>(() => (store.get('pcp.mode') as '2d') || 'split');
   const [tool, setTool] = useState<Tool>('select');
-  const [selection, setSelection] = useState<Selection>(null);
+  const [selection, setSelectionRaw] = useState<Selection>(null);
+  /** every selected item; more than one when shift-clicking or box-selecting */
+  const [selIds, setSelIds] = useState<string[]>([]);
+  const setSelection = useCallback((s: Selection) => {
+    setSelectionRaw(s);
+    setSelIds(s?.kind === 'item' ? [s.id] : []);
+  }, []);
+  const selectItems = useCallback((ids: string[], primary?: string) => {
+    setSelIds(ids);
+    setSelectionRaw(ids.length ? { kind: 'item', id: primary ?? ids[ids.length - 1] } : null);
+  }, []);
+  /** the items an action applies to: the whole multi-selection, or the single selected item */
+  const targetIds = () => (selIds.length ? selIds : selection?.kind === 'item' ? [selection.id] : []);
   const [showLid, setShowLid] = useState(false);
   const [showBays, setShowBays] = useState(() => store.get('pcp.bays') !== '0');
   useEffect(() => store.set('pcp.bays', showBays ? '1' : '0'), [showBays]);
@@ -192,9 +205,57 @@ export default function App() {
     );
   };
 
+  /** Align or space the selected items, in the directions you see on screen. */
+  const alignItems = (how: AlignOp) => {
+    const ids = targetIds();
+    const items = layout.items.filter((i) => ids.includes(i.uid));
+    if (items.length < 2) return;
+    const box = (i: PlacedItem) => {
+      const r = itemRect(i);
+      const a = toScreen({ x: r.x, y: r.y }, rot, c);
+      const b = toScreen({ x: r.x + r.w, y: r.y + r.h }, rot, c);
+      return { x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) };
+    };
+    const boxes = new Map(items.map((i) => [i.uid, box(i)]));
+    const all = [...boxes.values()];
+    const X0 = Math.min(...all.map((b) => b.x0)), X1 = Math.max(...all.map((b) => b.x1));
+    const Y0 = Math.min(...all.map((b) => b.y0)), Y1 = Math.max(...all.map((b) => b.y1));
+    const shift = new Map<string, { sx: number; sy: number }>();
+    if (how === 'distribute-h' || how === 'distribute-v') {
+      const horiz = how === 'distribute-h';
+      const sorted = [...items].sort((a, b) => (horiz ? boxes.get(a.uid)!.x0 - boxes.get(b.uid)!.x0 : boxes.get(a.uid)!.y0 - boxes.get(b.uid)!.y0));
+      const sizes = sorted.map((i) => { const b = boxes.get(i.uid)!; return horiz ? b.x1 - b.x0 : b.y1 - b.y0; });
+      const span = horiz ? X1 - X0 : Y1 - Y0;
+      const gap = (span - sizes.reduce((a, b) => a + b, 0)) / (sorted.length - 1);
+      let at = horiz ? X0 : Y0;
+      sorted.forEach((i, k) => {
+        const b = boxes.get(i.uid)!;
+        shift.set(i.uid, horiz ? { sx: at - b.x0, sy: 0 } : { sx: 0, sy: at - b.y0 });
+        at += sizes[k] + gap;
+      });
+    } else {
+      for (const i of items) {
+        const b = boxes.get(i.uid)!;
+        const sx = how === 'left' ? X0 - b.x0 : how === 'right' ? X1 - b.x1 : how === 'center' ? (X0 + X1) / 2 - (b.x0 + b.x1) / 2 : 0;
+        const sy = how === 'top' ? Y0 - b.y0 : how === 'bottom' ? Y1 - b.y1 : how === 'middle' ? (Y0 + Y1) / 2 - (b.y0 + b.y1) / 2 : 0;
+        shift.set(i.uid, { sx, sy });
+      }
+    }
+    set((L) => ({
+      ...L,
+      items: L.items.map((i) => {
+        const m = shift.get(i.uid);
+        if (!m) return i;
+        const d = screenDeltaToCase(m.sx, m.sy, rot);
+        return { ...i, x: i.x + d.dx, y: i.y + d.dy };
+      }),
+    }));
+  };
+
   const deleteSelection = () => {
     if (!selection) return;
-    if (selection.kind === 'item') set((L) => ({ ...L, items: L.items.filter((i) => i.uid !== selection.id) }));
+    const ids = targetIds();
+    if (selection.kind === 'item') set((L) => ({ ...L, items: L.items.filter((i) => !ids.includes(i.uid)) }));
     else set((L) => ({ ...L, dividers: removeDivider(L.dividers, selection.id, c, t, ins) }));
     setSelection(null);
   };
@@ -215,6 +276,11 @@ export default function App() {
         redo();
         return;
       }
+      if (mod && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selectItems(layout.items.map((i) => i.uid));
+        return;
+      }
       if (mod) return;
       if (e.key === 'Escape') {
         if (document.querySelector('.menu')) return; // the open menu handles its own Escape
@@ -226,7 +292,8 @@ export default function App() {
       } else if (e.key === 'h' && usesDividers) setTool((x) => (x === 'divider-h' ? 'select' : 'divider-h'));
       else if (e.key === 'v' && usesDividers) setTool((x) => (x === 'divider-v' ? 'select' : 'divider-v'));
       else if (e.key === 'r' && selection?.kind === 'item') {
-        set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, rot: !i.rot, room: rotateRoom(i.room, !i.rot) } : i)) }));
+        const ids = targetIds();
+        set((L) => ({ ...L, items: L.items.map((i) => (ids.includes(i.uid) ? { ...i, rot: !i.rot, room: rotateRoom(i.room, !i.rot) } : i)) }));
       } else if (e.key.startsWith('Arrow') && selection) {
         e.preventDefault();
         const step = e.altKey ? 0.5 : e.shiftKey ? layout.settings.grid * 8 : layout.settings.grid || 1;
@@ -236,7 +303,8 @@ export default function App() {
           e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0,
           rot,
         );
-        if (selection.kind === 'item') set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, x: i.x + dx, y: i.y + dy } : i)) }));
+        const ids = targetIds();
+        if (selection.kind === 'item') set((L) => ({ ...L, items: L.items.map((i) => (ids.includes(i.uid) ? { ...i, x: i.x + dx, y: i.y + dy } : i)) }));
         else
           set((L) => ({
             ...L,
@@ -438,6 +506,8 @@ export default function App() {
               tool={tool}
               selection={selection}
               onSelect={setSelection}
+              selectedIds={selIds}
+              onSelectItems={selectItems}
               set={set}
               checkpoint={checkpoint}
               rot={rot}
@@ -490,6 +560,7 @@ export default function App() {
         {narrow && selection && (
           <SelectionBar
             layout={layout}
+            count={selIds.length}
             selection={selection}
             labelOf={labelOf}
             onRotate={() => set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, rot: !i.rot, room: rotateRoom(i.room, !i.rot) } : i)) }))}
@@ -520,7 +591,7 @@ export default function App() {
             </svg>
           </button>
         </div>
-        <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} viewRot={rot} labelOf={labelOf} />
+        <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} viewRot={rot} labelOf={labelOf} selectedIds={selIds} onAlign={alignItems} onSelectItems={selectItems} />
       </div>
       {narrow && (leftOpen || rightOpen) && <div className="backdrop" onClick={() => (setLeftOpen(false), setRightOpen(false))} />}
 
@@ -588,6 +659,7 @@ function ViewSwitch({ mode, setMode, className }: { mode: '2d' | 'split' | '3d';
 /** Touch-friendly actions for the selected item or divider, docked over the case on small screens. */
 function SelectionBar(p: {
   layout: Layout;
+  count: number;
   selection: NonNullable<Selection>;
   labelOf: Map<string, string>;
   onRotate: () => void;
@@ -599,7 +671,7 @@ function SelectionBar(p: {
 }) {
   const item = p.selection.kind === 'item' ? p.layout.items.find((i) => i.uid === p.selection.id) : undefined;
   const usesDividers = p.layout.style === 'trekpak' || p.layout.style === 'padded';
-  const title = item ? item.label : `Divider ${p.labelOf.get(p.selection.id) ?? ''}`;
+  const title = p.count > 1 ? `${p.count} items selected` : item ? item.label : `Divider ${p.labelOf.get(p.selection.id) ?? ''}`;
   return (
     <div className="selbar" role="toolbar" aria-label="Selection">
       <span className="selbar-title">{title}</span>

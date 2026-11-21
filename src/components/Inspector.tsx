@@ -11,6 +11,8 @@ import { CUTTER, PIN_PAK, TREKPAK } from '../data/trekpak';
 import { inch } from '../lib/units';
 import { fmtWeight, itemWeight, LIMITS, parseWeight, summarizeWeight } from '../lib/weight';
 
+export type AlignOp = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'distribute-h' | 'distribute-v';
+
 interface Props {
   layout: Layout;
   c: CaseSpec;
@@ -22,6 +24,9 @@ interface Props {
   onSelect: (s: Selection) => void;
   set: (next: Layout | ((p: Layout) => Layout), commit?: boolean) => void;
   labelOf: Map<string, string>;
+  selectedIds?: string[];
+  onAlign?: (how: AlignOp) => void;
+  onSelectItems?: (ids: string[], primary?: string) => void;
   /** plan rotation, so 'extra room' sides match what's on screen */
   viewRot?: number;
 }
@@ -70,7 +75,7 @@ export function Inspector(props: Props) {
           </button>
         ))}
       </Section>
-      {item && <ItemPanel {...props} item={item} />}
+      {(props.selectedIds?.length ?? 0) > 1 ? <MultiPanel {...props} /> : item && <ItemPanel {...props} item={item} />}
       {div && <DividerPanel {...props} id={div.uid} />}
       {(layout.style === 'trekpak' || layout.style === 'padded') && <CutListPanel {...props} />}
       {(layout.style === 'trekpak' || layout.style === 'padded') && props.solve.resolved.size > 0 && <BuildStepsPanel {...props} />}
@@ -289,6 +294,55 @@ function RoomEditor({ item, units, viewRot, upd }: { item: PlacedItem; units: Un
       </div>
       <p className="hint">Kept clear for cables, knobs or a handle. Snapping, Box it in and the template all leave this space; it turns with the item.</p>
     </div>
+  );
+}
+
+function MultiPanel({ layout, selectedIds = [], onAlign, onSelectItems, set }: Props) {
+  const items = layout.items.filter((i) => selectedIds.includes(i.uid));
+  const icon = (d: string) => (
+    <svg viewBox="0 0 24 24" className="inline-icon" aria-hidden>
+      <path d={d} />
+    </svg>
+  );
+  const ops: { op: AlignOp; label: string; d: string }[] = [
+    { op: 'left', label: 'Align left', d: 'M4 3v18M8 7h10v4H8zM8 13h6v4H8z' },
+    { op: 'center', label: 'Align centres', d: 'M12 3v18M6 7h12v4H6zM8 13h8v4H8z' },
+    { op: 'right', label: 'Align right', d: 'M20 3v18M6 7h10v4H6zM10 13h6v4h-6z' },
+    { op: 'top', label: 'Align top', d: 'M3 4h18M7 8v10h4V8zM13 8v6h4V8z' },
+    { op: 'middle', label: 'Align middles', d: 'M3 12h18M7 6v12h4V6zM13 8v8h4V8z' },
+    { op: 'bottom', label: 'Align bottom', d: 'M3 20h18M7 6v10h4V6zM13 10v6h4v-6z' },
+    { op: 'distribute-h', label: 'Space evenly across', d: 'M3 4v16M21 4v16M8 8h3v8H8zM13 8h3v8h-3z' },
+    { op: 'distribute-v', label: 'Space evenly down', d: 'M4 3h16M4 21h16M8 8h8v3H8zM8 13h8v3H8z' },
+  ];
+  return (
+    <Section id="multi" title={`${items.length} items selected`}>
+      <div className="align-grid">
+        {ops.map((o) => (
+          <button key={o.op} className="btn small" onClick={() => onAlign?.(o.op)} title={o.label} aria-label={o.label} disabled={o.op.startsWith('distribute') && items.length < 3}>
+            {icon(o.d)}
+          </button>
+        ))}
+      </div>
+      <p className="hint">Aligns to what you see on screen. Spacing evenly needs three or more. Drag any one to move them all; arrows nudge, R rotates each.</p>
+      <ul className="multi-list">
+        {items.map((i) => (
+          <li key={i.uid}>
+            <span>{i.label}</span>
+            <button className="link" onClick={() => onSelectItems?.(selectedIds.filter((id) => id !== i.uid))}>
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="row">
+        <button className="btn danger" onClick={() => (set((L) => ({ ...L, items: L.items.filter((i) => !selectedIds.includes(i.uid)) })), onSelectItems?.([]))}>
+          Delete {items.length}
+        </button>
+        <button className="btn" onClick={() => onSelectItems?.([])}>
+          Deselect
+        </button>
+      </div>
+    </Section>
   );
 }
 
