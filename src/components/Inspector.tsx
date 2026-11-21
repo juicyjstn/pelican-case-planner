@@ -4,6 +4,7 @@ import { baseDepth, boxInDividers, dividerHeight, footprint, heal, refit, remove
 import { planStrips, type Cut } from '../lib/cutlist';
 import { fmt, fmtBoth, parseLength } from '../lib/units';
 import { pluckCells, type Selection } from './Editor2D';
+import { Section } from './Section';
 
 interface Props {
   layout: Layout;
@@ -49,14 +50,18 @@ export function Inspector(props: Props) {
 
   return (
     <aside className="inspector">
-      <section className={`panel status ${errors.length ? 'bad' : warns.length ? 'meh' : 'good'}`}>
-        <h2>{errors.length ? `${errors.length} problem${errors.length > 1 ? 's' : ''}` : warns.length ? 'Fits, with notes' : layout.items.length ? 'Everything fits' : 'Add some gear'}</h2>
+      <Section
+        id="status"
+        className={`status ${errors.length ? 'bad' : warns.length ? 'meh' : 'good'}`}
+        title={errors.length ? `${errors.length} problem${errors.length > 1 ? 's' : ''}` : warns.length ? 'Fits, with notes' : layout.items.length ? 'Everything fits' : 'Add some gear'}
+        summary={warns.length && !errors.length ? `${warns.length} note${warns.length > 1 ? 's' : ''}` : undefined}
+      >
         {[...errors, ...warns].slice(0, 8).map((i, n) => (
           <button key={n} className={`issue ${i.severity}`} onClick={() => i.target && props.onSelect({ kind: layout.items.some((x) => x.uid === i.target) ? 'item' : 'divider', id: i.target })}>
             {i.message}
           </button>
         ))}
-      </section>
+      </Section>
       {item && <ItemPanel {...props} item={item} />}
       {div && <DividerPanel {...props} id={div.uid} />}
       {(layout.style === 'trekpak' || layout.style === 'padded') && <CutListPanel {...props} />}
@@ -97,8 +102,7 @@ function ItemPanel({ item, layout, c, units, set, onSelect }: Props & { item: Pl
     reader.readAsDataURL(file);
   };
   return (
-    <section className="panel">
-      <h2>Selected gear</h2>
+    <Section id="selected-gear" title="Selected gear" summary={item.label}>
       <input className="title-input" value={item.label} onChange={(e) => upd({ label: e.target.value })} onKeyDown={(e) => e.stopPropagation()} />
       <div className="grid3">
         <label>
@@ -184,7 +188,7 @@ function ItemPanel({ item, layout, c, units, set, onSelect }: Props & { item: Pl
           Delete
         </button>
       </div>
-    </section>
+    </Section>
   );
 }
 
@@ -196,8 +200,7 @@ function DividerPanel({ id, layout, c, solve, units, set, onSelect }: Props & { 
   const endName = (e: typeof d.a) => (e.kind === 'wall' ? (ins ? 'perimeter wall' : 'case wall') : 'divider (pin)');
   const face = d.axis === 'h' ? d.pos - t / 2 : d.pos - t / 2;
   return (
-    <section className="panel">
-      <h2>Selected divider</h2>
+    <Section id="selected-divider" title="Selected divider" summary={fmt(d.length + layout.settings.fitAllowance, units)}>
       <p className="big-measure">{fmtBoth(d.length + layout.settings.fitAllowance, units)}</p>
       <p className="hint">
         {d.axis === 'h' ? 'Runs left–right' : 'Runs top–bottom'}, from {endName(d.a)} to {endName(d.b)}. Height {fmt(dividerHeight(layout, c), units)}.
@@ -231,7 +234,7 @@ function DividerPanel({ id, layout, c, solve, units, set, onSelect }: Props & { 
           Delete
         </button>
       </div>
-    </section>
+    </Section>
   );
 }
 
@@ -241,8 +244,7 @@ function CutListPanel({ layout, c, cuts, units }: Props) {
   const pins = cuts.reduce((s, x) => s + x.pins, 0);
   const pieces = cuts.reduce((s, x) => s + x.qty, 0);
   return (
-    <section className="panel">
-      <h2>{trek ? 'TrekPak cut list' : 'Divider list'}</h2>
+    <Section id="cutlist" title={trek ? 'TrekPak cut list' : 'Divider list'} summary={pieces ? `${pieces} piece${pieces > 1 ? 's' : ''}` : 'none yet'}>
       {!cuts.length ? (
         <p className="hint">Draw dividers with the H / V tools, or select gear and press “Box it in”.</p>
       ) : (
@@ -297,20 +299,19 @@ function CutListPanel({ layout, c, cuts, units }: Props) {
           )}
         </>
       )}
-    </section>
+    </Section>
   );
 }
 
 function FoamPanel({ layout, c }: Props) {
   const { plucked, cols, rows } = pluckCells(layout, c);
   return (
-    <section className="panel">
-      <h2>Pick-n-pluck</h2>
+    <Section id="foam" title="Pick-n-pluck" summary={`${plucked.size} cubes`}>
       <p>
         Remove <strong>{plucked.size}</strong> of {cols * rows} cubes (hatched).
       </p>
       <p className="hint">Cube pitch varies by foam; measure yours and set it in Settings. Pluck one cube less than shown for a tighter fit.</p>
-    </section>
+    </Section>
   );
 }
 
@@ -325,8 +326,7 @@ function SettingsPanel({ layout, units, set, c }: Props) {
     </label>
   );
   return (
-    <details className="panel settings">
-      <summary>Settings</summary>
+    <Section id="settings" className="settings" title="Settings" defaultOpen={false}>
       <div className="grid2">
         {row('Floor foam / pad', 'floorPad', 'Foam under the gear; raises everything')}
         {row('Gear clearance', 'clearance', 'Gap left around gear when snapping')}
@@ -352,6 +352,6 @@ function SettingsPanel({ layout, units, set, c }: Props) {
           Reset divider height to the case default
         </button>
       )}
-    </details>
+    </Section>
   );
 }

@@ -5,6 +5,7 @@ import { GEAR } from '../data/gear';
 import { STYLES, defaultSettings } from '../data/defaults';
 import { fmt, parseLength } from '../lib/units';
 import { baseDepth, wheelSide } from '../lib/geometry';
+import { Section } from './Section';
 import type { WheelSide } from '../types';
 
 export const REPO = 'juicyjstn/pelican-case-planner';
@@ -45,10 +46,7 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
     if (v != null && v > 0) set((L) => ({ ...L, customCase: { ...L.customCase!, [key]: v } }));
   };
   return (
-    <section className="panel">
-      <h2>
-        <span className="step">1</span> Case
-      </h2>
+    <Section id="case" title={<><span className="step">1</span> Case</>} summary={`${c.model}${c.line === 'Air' ? ' Air' : ''}`}>
       <select value={layout.caseId} onChange={(e) => setCase(e.target.value)} aria-label="Case model">
         {(['Protector', 'Air'] as const).map((line) => (
           <optgroup key={line} label={`Pelican ${line}`}>
@@ -127,7 +125,7 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
           ))}
         </div>
       </div>
-    </section>
+    </Section>
   );
 }
 
@@ -143,10 +141,7 @@ function StylePicker({ layout, c, set }: { layout: Layout; c: CaseSpec; set: Pro
       };
     });
   return (
-    <section className="panel">
-      <h2>
-        <span className="step">2</span> Interior
-      </h2>
+    <Section id="interior" title={<><span className="step">2</span> Interior</>} summary={STYLES.find((s) => s.id === layout.style)?.name}>
       <div className="style-grid">
         {STYLES.map((s) => (
           <button key={s.id} className={`style-card ${layout.style === s.id ? 'on' : ''}`} onClick={() => pick(s.id)} title={s.blurb}>
@@ -157,7 +152,7 @@ function StylePicker({ layout, c, set }: { layout: Layout; c: CaseSpec; set: Pro
       </div>
       <p className="hint">{STYLES.find((s) => s.id === layout.style)?.blurb}</p>
       {layout.style === 'trekpak' && !c.trekpak && <p className="note warn">Pelican doesn't sell a TrekPak kit for the {c.model}. You'd be cutting from spare strips.</p>}
-    </section>
+    </Section>
   );
 }
 
@@ -223,10 +218,7 @@ function GearLibrary({ units, myGear, setMyGear, onAddGear }: { units: Units; my
   );
 
   return (
-    <section className="panel grow">
-      <h2>
-        <span className="step">3</span> Gear
-      </h2>
+    <Section id="gear" className="grow" title={<><span className="step">3</span> Gear</>} summary={`${all.length} items`}>
       <div className="search">
         <input type="search" placeholder="Search gear, e.g. focusrite 2i2" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search gear" />
         <select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
@@ -297,7 +289,7 @@ function GearLibrary({ units, myGear, setMyGear, onAddGear }: { units: Units; my
           </ul>
         </details>
       )}
-    </section>
+    </Section>
   );
 }
 
