@@ -1,6 +1,7 @@
 import type { CaseSpec, Layout, Units } from '../types';
 import { dividerHeight, footprint, keepOut, wallInset, type DividerSolve } from '../lib/geometry';
-import type { Cut } from '../lib/cutlist';
+import { buildSteps, type Cut } from '../lib/cutlist';
+import { StepDiagram, stepText } from './BuildSteps';
 import { fmt, MM_PER_IN } from '../lib/units';
 import { pluckCells } from './Editor2D';
 
@@ -160,6 +161,26 @@ export function PrintSheets(props: Props) {
           </table>
         </>
       )}
+      {cuts.length > 0 &&
+        (() => {
+          const ins = wallInset(layout);
+          const steps = buildSteps([...props.solve.resolved.values()], props.labelOf, layout.settings.fitAllowance, ins);
+          return (
+            <>
+              <h2>Build steps</h2>
+              <ol className="print-steps">
+                {steps.map((s) => (
+                  <li key={s.id}>
+                    <StepDiagram c={c} dividers={props.solve.resolved} steps={steps} upto={s.n} inset={ins} print />
+                    <span>
+                      <b>{s.label}</b> · {stepText(s, units, ins > 0)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          );
+        })()}
       <h2>Gear</h2>
       <ul>
         {layout.items.map((it) => {

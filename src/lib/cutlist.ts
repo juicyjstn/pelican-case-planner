@@ -74,3 +74,56 @@ export function planStrips(cuts: Cut[], stock: number, kerf = 1): StripPlan {
   }
   return { strips, total: pieces.reduce((s, p) => s + p.length, 0) };
 }
+
+export interface BuildStep {
+  n: number;
+  id: string;
+  label: string;
+  /** cut length including fit allowance */
+  length: number;
+  axis: 'h' | 'v';
+  /** distance from the wall face (or perimeter panel) to the divider's near face */
+  offset: number;
+  offsetFrom: 'hinge' | 'left';
+  /** what each end meets */
+  ends: { a: string | null; b: string | null };
+  pins: number;
+}
+
+/**
+ * Order dividers so each goes in after anything it pins into (Kahn's algorithm):
+ * wall-to-wall pieces first, then the pieces that join them.
+ */
+export function buildSteps(dividers: ResolvedDivider[], labelOf: Map<string, string>, allowance: number, inset: number): BuildStep[] {
+  const byId = new Map(dividers.map((d) => [d.uid, d]));
+  const deps = (d: ResolvedDivider) =>
+    [d.a, d.b].flatMap((e) => (e.kind === 'div' && byId.has(e.id) ? [e.id] : []));
+  const placed = new Set<string>();
+  const order: ResolvedDivider[] = [];
+  let remaining = [...dividers];
+  while (remaining.length) {
+    const ready = remaining.filter((d) => deps(d).every((id) => placed.has(id)));
+    // Longest first among the ready ones; if a loop blocks progress, just take what's left.
+    const batch = (ready.length ? ready : remaining).sort((x, y) => y.length - x.length);
+    const next = batch[0];
+    order.push(next);
+    placed.add(next.uid);
+    remaining = remaining.filter((d) => d !== next);
+  }
+  return order.map((d, i) => {
+    const t = d.rect.h < d.rect.w ? d.rect.h : d.rect.w;
+    const near = d.pos - t / 2 - inset;
+    const endName = (e: ResolvedDivider['a']) => (e.kind === 'div' ? labelOf.get(e.id) ?? '?' : null);
+    return {
+      n: i + 1,
+      id: d.uid,
+      label: labelOf.get(d.uid) ?? '?',
+      length: d.length + allowance,
+      axis: d.axis,
+      offset: near,
+      offsetFrom: d.axis === 'h' ? 'hinge' : 'left',
+      ends: { a: endName(d.a), b: endName(d.b) },
+      pins: (d.a.kind === 'div' ? 1 : 0) + (d.b.kind === 'div' ? 1 : 0),
+    };
+  });
+}

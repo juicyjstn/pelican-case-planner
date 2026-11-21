@@ -473,7 +473,7 @@ export default function App() {
             </svg>
           </button>
         </div>
-        <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} viewRot={rot} />
+        <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} viewRot={rot} labelOf={labelOf} />
       </div>
       {narrow && (leftOpen || rightOpen) && <div className="backdrop" onClick={() => (setLeftOpen(false), setRightOpen(false))} />}
 

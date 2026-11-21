@@ -5,6 +5,8 @@ import { planStrips, type Cut } from '../lib/cutlist';
 import { fmt, fmtBoth, parseLength } from '../lib/units';
 import { pluckCells, type Selection } from './Editor2D';
 import { Section } from './Section';
+import { StepDiagram, stepText } from './BuildSteps';
+import { buildSteps } from '../lib/cutlist';
 
 interface Props {
   layout: Layout;
@@ -16,6 +18,7 @@ interface Props {
   selection: Selection;
   onSelect: (s: Selection) => void;
   set: (next: Layout | ((p: Layout) => Layout), commit?: boolean) => void;
+  labelOf: Map<string, string>;
   /** plan rotation, so 'extra room' sides match what's on screen */
   viewRot?: number;
 }
@@ -67,6 +70,7 @@ export function Inspector(props: Props) {
       {item && <ItemPanel {...props} item={item} />}
       {div && <DividerPanel {...props} id={div.uid} />}
       {(layout.style === 'trekpak' || layout.style === 'padded') && <CutListPanel {...props} />}
+      {(layout.style === 'trekpak' || layout.style === 'padded') && props.solve.resolved.size > 0 && <BuildStepsPanel {...props} />}
       {layout.style === 'foam' && <FoamPanel {...props} />}
       <SettingsPanel {...props} />
     </aside>
@@ -340,6 +344,26 @@ function CutListPanel({ layout, c, cuts, units }: Props) {
           )}
         </>
       )}
+    </Section>
+  );
+}
+
+function BuildStepsPanel({ layout, c, solve, labelOf, units }: Props) {
+  const ins = wallInset(layout);
+  const steps = buildSteps([...solve.resolved.values()], labelOf, layout.settings.fitAllowance, ins);
+  return (
+    <Section id="build" title="Build steps" summary={`${steps.length} step${steps.length === 1 ? '' : 's'}`}>
+      <ol className="steps">
+        {steps.map((s) => (
+          <li key={s.id}>
+            <StepDiagram c={c} dividers={solve.resolved} steps={steps} upto={s.n} inset={ins} />
+            <p>
+              <span className="cut-tag">{s.label}</span> {stepText(s, units, ins > 0)}
+            </p>
+          </li>
+        ))}
+      </ol>
+      <p className="hint">Measured from the face of the wall or panel to the near face of the divider. Dry-fit each piece before cutting the next.</p>
     </Section>
   );
 }

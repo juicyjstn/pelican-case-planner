@@ -286,6 +286,16 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .cuts td { padding: 5px 4px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
 .cuts td small { display: block; color: var(--muted); font-size: 11px; }
 .cut-tag { background: var(--accent); color: var(--accent-ink); font-weight: 700; border-radius: 5px; padding: 1px 7px; }
+.steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; counter-reset: step; }
+.steps li { display: grid; grid-template-columns: 84px 1fr; gap: 10px; align-items: start; counter-increment: step; }
+.steps li p { margin: 0; font-size: 12.5px; line-height: 1.45; }
+.steps li p::before { content: counter(step) '. '; font-weight: 700; color: var(--muted); }
+.step-diagram { width: 84px; height: auto; display: block; }
+.sd-case { fill: var(--bg); stroke: var(--muted); stroke-width: 5; }
+.sd-perim { stroke: var(--muted); stroke-opacity: .6; stroke-width: 3; stroke-dasharray: 8 6; }
+.sd-placed { fill: var(--muted); opacity: .55; }
+.sd-current { fill: var(--accent); }
+.sd-label { fill: var(--muted); }
 .strips { display: flex; flex-direction: column; gap: 4px; }
 .strip { display: flex; height: 22px; background: repeating-linear-gradient(45deg, var(--panel), var(--panel) 4px, var(--line) 4px, var(--line) 6px); border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
 .strip span { background: var(--tp-panel); color: #111; font-size: 11px; font-weight: 700; display: grid; place-items: center; border-right: 2px solid var(--panel-2); min-width: 0; overflow: hidden; }
@@ -351,6 +361,9 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
   .sheet h2 { font-size: 13pt; margin: 12pt 0 4pt; }
   .sheet table { border-collapse: collapse; }
   .sheet th, .sheet td { border: 0.5pt solid #888; padding: 3pt 8pt; text-align: left; }
+  .print-steps { padding-left: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8pt 14pt; }
+  .print-steps li { display: grid; grid-template-columns: 30mm 1fr; gap: 6pt; align-items: start; break-inside: avoid; font-size: 9.5pt; }
+  .print-steps .step-diagram { width: 30mm; }
   .sheet footer { margin-top: 14pt; font-size: 9pt; color: #555; }
   .tile-head { font-size: 9pt; display: flex; align-items: center; gap: 6pt; overflow: hidden; margin: 0; box-sizing: border-box; }
   .tile-head b { font-size: 14pt; }
