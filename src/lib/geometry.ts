@@ -528,3 +528,94 @@ export function computeBays(layout: Layout, c: CaseSpec, solve: DividerSolve): B
   }
   return bays;
 }
+
+/* ------------------------------------------------------------------ */
+/* Auto-divide                                                         */
+/* ------------------------------------------------------------------ */
+
+interface Region {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** what each side of the region is: a wall or the face of a divider */
+  top: DividerEnd;
+  bottom: DividerEnd;
+  left: DividerEnd;
+  right: DividerEnd;
+}
+
+/**
+ * Lay out dividers automatically: recursively find a straight cut that separates the gear
+ * (keeping clearance and each item's extra room), place it snug against one group, and recurse
+ * on both sides. An item alone in its region gets walls on any side with room for a useful bay.
+ * Items that can't be separated by a straight cut are reported in `stuck`.
+ */
+export function autoDivide(layout: Layout, c: CaseSpec, minBay = 25.4): { dividers: Divider[]; stuck: string[] } {
+  const t = layout.settings.dividerThickness;
+  const cl = layout.settings.clearance;
+  const ins = wallInset(layout);
+  const out: Divider[] = [];
+  const stuck: string[] = [];
+  const all = layout.items
+    .map((it) => ({ it, r: keepOut(it) }))
+    .filter(({ r }) => r.x + r.w / 2 > ins && r.x + r.w / 2 < c.l - ins && r.y + r.h / 2 > ins && r.y + r.h / 2 < c.w - ins);
+
+  const add = (axis: 'h' | 'v', pos: number, a: DividerEnd, b: DividerEnd): DividerEnd => {
+    const d: Divider = { uid: uid('d'), axis, pos, a, b };
+    out.push(d);
+    return { kind: 'div', id: d.uid };
+  };
+
+  type Entry = (typeof all)[number];
+  const split = (reg: Region, items: Entry[]) => {
+    if (!items.length) return;
+    if (items.length === 1) return boxSingle(reg, items[0]);
+    let best: { axis: 'h' | 'v'; pos: number; score: number; gap: number } | null = null;
+    for (const axis of ['v', 'h'] as const) {
+      const lo = (e: Entry) => (axis === 'v' ? e.r.x : e.r.y);
+      const hi = (e: Entry) => (axis === 'v' ? e.r.x + e.r.w : e.r.y + e.r.h);
+      const sorted = [...items].sort((a, b) => lo(a) - lo(b));
+      let maxHi = -Infinity;
+      for (let k = 0; k < sorted.length - 1; k++) {
+        maxHi = Math.max(maxHi, hi(sorted[k]));
+        const minLo = Math.min(...sorted.slice(k + 1).map(lo));
+        const gap = minLo - maxHi;
+        if (gap < 2 * cl + t) continue; // no room for a divider here
+        const score = Math.abs(k + 1 - sorted.length / 2);
+        if (!best || score < best.score || (score === best.score && gap > best.gap)) {
+          best = { axis, pos: maxHi + cl + t / 2, score, gap };
+        }
+      }
+    }
+    if (!best) {
+      stuck.push(...items.map((e) => e.it.uid));
+      return;
+    }
+    const { axis, pos } = best;
+    if (axis === 'v') {
+      const id = add('v', pos, reg.top, reg.bottom);
+      split({ ...reg, x1: pos - t / 2, right: id }, items.filter((e) => e.r.x + e.r.w <= pos));
+      split({ ...reg, x0: pos + t / 2, left: id }, items.filter((e) => e.r.x + e.r.w > pos));
+    } else {
+      const id = add('h', pos, reg.left, reg.right);
+      split({ ...reg, y1: pos - t / 2, bottom: id }, items.filter((e) => e.r.y + e.r.h <= pos));
+      split({ ...reg, y0: pos + t / 2, top: id }, items.filter((e) => e.r.y + e.r.h > pos));
+    }
+  };
+
+  const boxSingle = (reg: Region, e: Entry) => {
+    const r = e.r;
+    const need = minBay + t; // only wall off space big enough to be a useful bay
+    let { top, bottom } = reg;
+    // Left-right walls first (they span the region), then end walls between them.
+    if (r.y - cl - reg.y0 >= need) top = add('h', r.y - cl - t / 2, reg.left, reg.right);
+    if (reg.y1 - (r.y + r.h + cl) >= need) bottom = add('h', r.y + r.h + cl + t / 2, reg.left, reg.right);
+    if (r.x - cl - reg.x0 >= need) add('v', r.x - cl - t / 2, top, bottom);
+    if (reg.x1 - (r.x + r.w + cl) >= need) add('v', r.x + r.w + cl + t / 2, top, bottom);
+  };
+
+  const wall: DividerEnd = { kind: 'wall' };
+  split({ x0: ins, y0: ins, x1: c.l - ins, y1: c.w - ins, top: wall, bottom: wall, left: wall, right: wall }, all);
+  return { dividers: heal(out, c, t, ins), stuck };
+}

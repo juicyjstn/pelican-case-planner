@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GearSpec, Layout, PlacedItem, Units } from './types';
 import { useHistory } from './lib/history';
-import { boxInDividers, rotateRoom, checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
+import { autoDivide, boxInDividers, rotateRoom, checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
 import { buildCutList } from './lib/cutlist';
 import { decodeHash, downloadText, normalizeLayout, safeStorage, shareUrl } from './lib/share';
 import { fmt } from './lib/units';
@@ -161,9 +161,9 @@ export default function App() {
   useEffect(() => store.set('pcp.pose', pose), [pose]);
   useEffect(() => store.set('pcp.paper', paper), [paper]);
 
-  const flash = (msg: string) => {
+  const flash = (msg: string, ms = 2600) => {
     setToast(msg);
-    window.setTimeout(() => setToast((m) => (m === msg ? null : m)), 2600);
+    window.setTimeout(() => setToast((m) => (m === msg ? null : m)), ms);
   };
 
   const addGear = (g: GearSpec) => {
@@ -174,6 +174,19 @@ export default function App() {
     setSelection({ kind: 'item', id: placed.uid });
     setTool('select');
     if (narrow) setLeftOpen(false); // done picking: get back to the case
+  };
+
+  const runAutoDivide = () => {
+    const { dividers, stuck } = autoDivide(layout, c);
+    set((L) => ({ ...L, dividers }));
+    setSelection(null);
+    const names = layout.items.filter((i) => stuck.includes(i.uid)).map((i) => i.label);
+    flash(
+      stuck.length
+        ? `${dividers.length} dividers added. ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''} ${names.length > 1 ? 'are' : 'is'} too close to split; they share a bay.`
+        : `${dividers.length} dividers added. Undo to go back.`,
+      5000,
+    );
   };
 
   const deleteSelection = () => {
@@ -370,6 +383,12 @@ export default function App() {
                 )}
               </div>
               <RotateControl rot={rot} turn={turn} />
+              {usesDividers && layout.items.length > 0 && (
+                <button className="btn small" onClick={runAutoDivide} title="Replace the dividers with an automatic layout around your gear (undo to go back)">
+                  ✦<span className="lbl"> Auto-divide</span>
+                  <span className="lbl-narrow"> Auto</span>
+                </button>
+              )}
               {usesDividers && layout.dividers.length > 0 && (
                 <button className={`btn small toggle ${showBays ? 'on' : ''}`} onClick={() => setShowBays((v) => !v)} aria-pressed={showBays} title="Show the inside size of each compartment">
                   <span className="lbl">Bay sizes</span>
