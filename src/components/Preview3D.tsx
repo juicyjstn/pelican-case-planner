@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CaseSpec, Layout } from '../types';
 import { baseDepth, dividerHeight, footprint, wallInset, type DividerSolve, type Issue } from '../lib/geometry';
+import type { ViewRot } from './Editor2D';
 
 interface Props {
   layout: Layout;
@@ -11,6 +12,10 @@ interface Props {
   issues: Issue[];
   showLid: boolean;
   selectedId?: string;
+  /** matches the plan view, so 3D faces the same way */
+  rot: ViewRot;
+  /** standing = resting on the edge at the bottom of the plan view, open side facing you */
+  pose: 'flat' | 'standing';
 }
 
 const WALL = 9;
@@ -38,7 +43,7 @@ function labelTexture(text: string, color: string, w: number, d: number): THREE.
   return tex;
 }
 
-export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Props) {
+export function Preview3D({ layout, c, solve, issues, showLid, selectedId, rot, pose }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const ctx = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -46,6 +51,9 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Pro
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     group: THREE.Group;
+    yaw: THREE.Group;
+    posed: THREE.Group;
+    ground: THREE.Mesh;
     fittedFor?: string;
   }>();
 
@@ -61,7 +69,7 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Pro
     const camera = new THREE.PerspectiveCamera(35, 1, 1, 20000);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.maxPolarAngle = Math.PI * 0.495;
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 2.2);
     sun.position.set(-400, 900, 500);
@@ -71,9 +79,18 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Pro
     sc.left = sc.bottom = -700;
     sc.right = sc.top = 700;
     scene.add(sun);
+    // posed (tip up to stand) > yaw (match the plan rotation) > group (the case, lying flat)
+    const posed = new THREE.Group();
+    const yaw = new THREE.Group();
     const group = new THREE.Group();
-    scene.add(group);
-    ctx.current = { renderer, scene, camera, controls, group };
+    yaw.add(group);
+    posed.add(yaw);
+    scene.add(posed);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.ShadowMaterial({ opacity: 0.28 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+    ctx.current = { renderer, scene, camera, controls, group, yaw, posed, ground };
 
     const resize = () => {
       const r = host.getBoundingClientRect();
@@ -104,7 +121,7 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Pro
   useEffect(() => {
     const k = ctx.current;
     if (!k) return;
-    const { group, camera, controls } = k;
+    const { group, camera, controls, yaw, posed, ground } = k;
     group.traverse((o) => {
       const m = o as THREE.Mesh;
       m.geometry?.dispose();
@@ -143,6 +160,16 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Pro
     box(WALL, base, c.w, shellMat, -c.l / 2 - WALL / 2, base / 2, 0);
     box(WALL, base, c.w, shellMat, c.l / 2 + WALL / 2, base / 2, 0);
 
+    // Hardware: handle and latches on the front (plan y = 0) wall, hinges on the back.
+    const hwMat = new THREE.MeshStandardMaterial({ color: 0x0d0e10, roughness: 0.5 });
+    const latchMat = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.4, metalness: 0.2 });
+    const frontZ = -c.w / 2 - WALL;
+    const handleW = Math.min(c.l * 0.32, 160);
+    box(handleW, 14, 16, hwMat, 0, base - 12, frontZ - 10);
+    const latchXs = c.l > 600 ? [-0.32, 0.32] : [-0.3, 0.3];
+    for (const fx of latchXs) box(Math.min(30, c.l * 0.08), 30, 8, latchMat, fx * c.l, base - 16, frontZ - 4);
+    for (const fx of c.l > 450 ? [-0.3, 0, 0.3] : [-0.25, 0.25]) box(20, 14, 10, hwMat, fx * c.l, base - 8, c.w / 2 + WALL + 5);
+
     if (pad > 0) {
       const foam = new THREE.MeshStandardMaterial({ color: layout.style === 'foam' ? 0x2e3136 : 0x34373c, roughness: 1 });
       box(c.l - 2 * ins, pad, c.w - 2 * ins, foam, 0, pad / 2, 0, false);
@@ -172,7 +199,14 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Pro
       if (it.image) {
         topMap = new THREE.TextureLoader().load(it.image);
         topMap.colorSpace = THREE.SRGBColorSpace;
-      } else topMap = labelTexture(it.label, it.color, f.w, f.d);
+      } else {
+        topMap = labelTexture(it.label, it.color, f.w, f.d);
+        // Keep painted labels readable when the case is turned past 90°.
+        if (rot === 180 || rot === 270) {
+          topMap.center.set(0.5, 0.5);
+          topMap.rotation = Math.PI;
+        }
+      }
       const top = new THREE.MeshStandardMaterial({ map: topMap, roughness: 0.55 });
       if (errs.has(it.uid)) {
         side.emissive = new THREE.Color(0x8a1010);
@@ -195,16 +229,40 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId }: Pro
       group.add(edges);
     }
 
-    // Frame the camera once per case size, so edits don't yank the view around.
-    const key = `${c.l}x${c.w}x${c.d}`;
+    // Turn the case to match the plan view, then stand it on the plan's bottom edge if asked.
+    yaw.rotation.y = (-rot * Math.PI) / 180;
+    const turned = rot === 90 || rot === 270;
+    // At 0° it rests on its hinges (handle up); at 180° on the handle.
+    const downExtent = (turned ? c.l : c.w) / 2 + WALL + (rot === 0 ? 10 : rot === 180 ? 26 : 0);
+    if (pose === 'standing') {
+      posed.rotation.x = Math.PI / 2;
+      posed.position.set(0, downExtent, -base / 2);
+      ground.position.y = 0;
+    } else {
+      posed.rotation.x = 0;
+      posed.position.set(0, 0, 0);
+      ground.position.y = -6;
+    }
+
+    // Frame the camera once per case size / pose, so edits don't yank the view around.
+    const key = `${c.l}x${c.w}x${c.d}:${pose}:${rot}:${camera.aspect.toFixed(2)}`;
     if (k.fittedFor !== key) {
       const r = Math.max(c.l, c.w) * 1.25;
-      camera.position.set(-r * 0.55, r * 0.95, r * 0.95);
-      controls.target.set(0, base * 0.3, 0);
+      if (pose === 'standing') {
+        // Fit the whole standing case: height 2·downExtent, width = the other plan side.
+        const tanHalf = Math.tan(((camera.fov / 2) * Math.PI) / 180);
+        const width = (turned ? c.w : c.l) + 2 * WALL;
+        const dist = 1.35 * Math.max(downExtent / tanHalf, width / 2 / (tanHalf * Math.max(camera.aspect, 0.3))) + c.d;
+        camera.position.set(-dist * 0.3, downExtent + dist * 0.18, dist * 0.94);
+        controls.target.set(0, downExtent, 0);
+      } else {
+        camera.position.set(-r * 0.55, r * 0.95, r * 0.95);
+        controls.target.set(0, base * 0.3, 0);
+      }
       controls.update();
       k.fittedFor = key;
     }
-  }, [layout, c, solve, issues, showLid, selectedId]);
+  }, [layout, c, solve, issues, showLid, selectedId, rot, pose]);
 
   return <div ref={hostRef} className="preview3d" />;
 }

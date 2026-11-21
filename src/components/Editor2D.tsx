@@ -16,6 +16,7 @@ import {
 import { fmt, MM_PER_IN } from '../lib/units';
 
 export type Tool = 'select' | 'divider-h' | 'divider-v';
+export type ViewRot = 0 | 90 | 180 | 270;
 export type Selection = { kind: 'item' | 'divider'; id: string } | null;
 
 interface Props {
@@ -30,6 +31,8 @@ interface Props {
   onSelect: (s: Selection) => void;
   set: (next: Layout | ((p: Layout) => Layout), commit?: boolean) => void;
   checkpoint: () => void;
+  /** plan-view rotation; 0 = handle side at the top */
+  rot: ViewRot;
 }
 
 const SHELL = 22; // drawn wall thickness, mm (visual only)
@@ -40,8 +43,16 @@ type Drag =
   | { kind: 'divider'; id: string; moved: boolean }
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number; moved: boolean };
 
-export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selection, onSelect, set, checkpoint }: Props) {
+export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selection, onSelect, set, checkpoint, rot }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const caseRef = useRef<SVGGElement>(null);
+  const turned = rot === 90 || rot === 270;
+  /** case size as it appears on screen */
+  const SL = turned ? c.w : c.l;
+  const SW = turned ? c.l : c.w;
+  const caseTransform = caseTransformFor(rot, c);
+  /** keep text upright: undo the view rotation around (x, y) */
+  const up = (x: number, y: number) => (rot ? `rotate(${-rot} ${x} ${y})` : undefined);
   const [view, setView] = useState<Rect>({ x: 0, y: 0, w: 100, h: 100 });
   const [drag, setDrag] = useState<Drag | null>(null);
   const [guides, setGuides] = useState<SnapGuide[]>([]);
@@ -54,17 +65,27 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
   // Fit the case into view whenever the case changes.
   const fit = useCallback(() => {
     const pad = SHELL + RULER + 12;
-    const top = pad + Math.max(30, c.w * 0.12); // room for the floating toolbar
-    setView({ x: -pad, y: -top, w: c.l + pad + SHELL + 14, h: c.w + top + SHELL + 14 });
-  }, [c.l, c.w]);
+    const top = pad + Math.max(30, SW * 0.12); // room for the floating toolbar
+    setView({ x: -pad, y: -top, w: SL + pad + SHELL + 14, h: SW + top + SHELL + 14 });
+  }, [SL, SW]);
   useEffect(fit, [fit]);
 
-  const toLocal = useCallback((e: { clientX: number; clientY: number }) => {
+  /** pointer -> view (screen-aligned mm) coordinates, for zoom and pan */
+  const toView = useCallback((e: { clientX: number; clientY: number }) => {
     const svg = svgRef.current!;
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
     const p = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    return { x: p.x, y: p.y };
+  }, []);
+  /** pointer -> case coordinates (through the rotation) */
+  const toLocal = useCallback((e: { clientX: number; clientY: number }) => {
+    const g = caseRef.current ?? svgRef.current!;
+    const pt = svgRef.current!.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const p = pt.matrixTransform(g.getScreenCTM()!.inverse());
     return { x: p.x, y: p.y };
   }, []);
 
@@ -82,7 +103,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
     if (!svg) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const p = toLocal(e);
+      const p = toView(e);
       const k = Math.exp(e.deltaY * 0.0015);
       setView((v) => {
         const w = Math.min(Math.max(v.w * k, 40), 4000);
@@ -92,7 +113,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
     };
     svg.addEventListener('wheel', onWheel, { passive: false });
     return () => svg.removeEventListener('wheel', onWheel);
-  }, [toLocal]);
+  }, [toView]);
 
   const errorTargets = useMemo(() => new Set(issues.filter((i) => i.severity === 'error').map((i) => i.target)), [issues]);
   const warnTargets = useMemo(() => new Set(issues.filter((i) => i.severity === 'warn').map((i) => i.target)), [issues]);
@@ -119,7 +140,9 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
   };
 
   const newDividerAt = (p: { x: number; y: number }): Divider => {
-    const axis = tool === 'divider-h' ? 'h' : 'v';
+    // The tools are named for how the line looks on screen; map through the rotation.
+    const screenH = tool === 'divider-h';
+    const axis = screenH !== turned ? 'h' : 'v';
     let pos = axis === 'h' ? p.y : p.x;
     const span = axis === 'h' ? c.w : c.l;
     const probe: ResolvedDivider = {
@@ -268,15 +291,19 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
           ))}
       </defs>
 
-      <Rulers c={c} units={units} fs={fs} />
+      <Rulers l={SL} w={SW} units={units} fs={fs} />
 
       {/* case shell */}
-      <rect x={-SHELL} y={-SHELL} width={c.l + 2 * SHELL} height={c.w + 2 * SHELL} rx={SHELL * 0.9} fill="url(#shell)" />
-      <rect x={-SHELL + 4} y={-SHELL + 4} width={c.l + 2 * SHELL - 8} height={c.w + 2 * SHELL - 8} rx={SHELL * 0.7} fill="none" stroke="var(--shell-edge)" strokeWidth={0.8} />
-      <rect x={0} y={0} width={c.l} height={c.w} rx={4} fill={layout.style === 'none' ? 'var(--floor)' : 'url(#foamtex)'} />
+      <g transform={caseTransform}>
+        <rect x={-SHELL} y={-SHELL} width={c.l + 2 * SHELL} height={c.w + 2 * SHELL} rx={SHELL * 0.9} fill="url(#shell)" />
+        <rect x={-SHELL + 4} y={-SHELL + 4} width={c.l + 2 * SHELL - 8} height={c.w + 2 * SHELL - 8} rx={SHELL * 0.7} fill="none" stroke="var(--shell-edge)" strokeWidth={0.8} />
+        <ShellMarks c={c} fs={fs} rot={rot} />
+        <rect x={0} y={0} width={c.l} height={c.w} rx={4} fill={layout.style === 'none' ? 'var(--floor)' : 'url(#foamtex)'} />
+      </g>
 
-      <GridLines c={c} units={units} />
+      <GridLines l={SL} w={SW} units={units} />
 
+      <g ref={caseRef} transform={caseTransform}>
       {layout.style === 'foam' && <PluckGrid layout={layout} c={c} />}
 
       {ins > 0 && (
@@ -314,7 +341,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
                 width={horiz ? d.rect.w : d.rect.w + 8}
                 height={horiz ? d.rect.h + 8 : d.rect.h}
                 fill="transparent"
-                style={{ cursor: horiz ? 'ns-resize' : 'ew-resize' }}
+                style={{ cursor: horiz !== turned ? 'ns-resize' : 'ew-resize' }}
               />
               {layout.style === 'trekpak' &&
                 (['a', 'b'] as const).map((side) =>
@@ -337,7 +364,9 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
           <rect {...previewResolved} width={previewResolved.w} height={previewResolved.h} fill="var(--accent)" opacity={0.45} />
           <text
             x={previewResolved.x + previewResolved.w / 2}
-            y={previewResolved.y + previewResolved.h / 2 - t}
+            y={previewResolved.y + previewResolved.h / 2}
+            transform={up(previewResolved.x + previewResolved.w / 2, previewResolved.y + previewResolved.h / 2)}
+            dy={-t}
             fontSize={fs}
             textAnchor="middle"
             className="measure"
@@ -354,7 +383,8 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
         const err = errorTargets.has(it.uid);
         const warn = warnTargets.has(it.uid);
         const small = Math.min(f.w, f.d);
-        const lfs = Math.min(Math.max(small / 6, 4), fs * 1.15, f.w / Math.max(4, it.label.length * 0.62));
+        const screenW = turned ? f.d : f.w;
+        const lfs = Math.min(Math.max(small / 6, 4), fs * 1.15, screenW / Math.max(4, it.label.length * 0.62));
         return (
           <g
             key={it.uid}
@@ -381,7 +411,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
               strokeWidth={err || sel ? 1.4 : 0.6}
               strokeDasharray={err ? '3 1.5' : undefined}
             />
-            <g pointerEvents="none" className="item-text">
+            <g pointerEvents="none" className="item-text" transform={up(f.w / 2, f.d / 2)}>
               <text x={f.w / 2} y={f.d / 2 - lfs * 0.15} fontSize={lfs} textAnchor="middle" className="item-label">
                 {it.label}
               </text>
@@ -400,11 +430,11 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
         [...solve.resolved.values()].map((d) => {
           const label = labelOf.get(d.uid);
           return label && d.length > fs * 3 ? (
-            <DividerLabel key={d.uid} d={d} text={`${label} · ${fmt(d.length + layout.settings.fitAllowance, units)}`} fs={fs * 0.85} />
+            <DividerLabel key={d.uid} d={d} rot={rot} text={`${label} · ${fmt(d.length + layout.settings.fitAllowance, units)}`} fs={fs * 0.85} />
           ) : null;
         })}
 
-      {selectedItem && <GapReadout item={selectedItem} layout={layout} c={c} solve={solve} units={units} fs={fs} />}
+      {selectedItem && <GapReadout item={selectedItem} layout={layout} c={c} solve={solve} units={units} fs={fs} up={up} />}
 
       {guides.map((g, i) =>
         g.axis === 'x' ? (
@@ -414,30 +444,30 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
         ),
       )}
 
-      {hover && hover.x >= 0 && hover.y >= 0 && hover.x <= c.l && hover.y <= c.w && (
-        <text x={c.l + SHELL} y={c.w + SHELL + fs * 1.3} fontSize={fs * 0.85} textAnchor="end" className="cursor-readout">
-          {fmt(hover.x, units)}, {fmt(hover.y, units)}
-        </text>
-      )}
+      </g>
+
+      {hover && hover.x >= 0 && hover.y >= 0 && hover.x <= c.l && hover.y <= c.w && (() => {
+        const sp = toScreen(hover, rot, c);
+        return (
+          <text x={SL + SHELL} y={SW + SHELL + fs * 1.3} fontSize={fs * 0.85} textAnchor="end" className="cursor-readout">
+            {fmt(sp.x, units)}, {fmt(sp.y, units)}
+          </text>
+        );
+      })()}
     </svg>
   );
 }
 
 /* ------------------------------------------------------------------ */
 
-function DividerLabel({ d, text, fs }: { d: ResolvedDivider; text: string; fs: number }) {
-  const cx = (d.s0 + d.s1) / 2;
-  if (d.axis === 'h')
-    return (
-      <g pointerEvents="none">
-        <rect x={cx - text.length * fs * 0.3} y={d.pos - fs * 0.62} width={text.length * fs * 0.6} height={fs * 1.24} rx={fs * 0.3} className="divlabel-bg" />
-        <text x={cx} y={d.pos + fs * 0.35} fontSize={fs} textAnchor="middle" className="divlabel">
-          {text}
-        </text>
-      </g>
-    );
+function DividerLabel({ d, text, fs, rot }: { d: ResolvedDivider; text: string; fs: number; rot: ViewRot }) {
+  const mid = (d.s0 + d.s1) / 2;
+  const [x, y] = d.axis === 'h' ? [mid, d.pos] : [d.pos, mid];
+  // Run the label along the divider as it appears on screen, never upside down.
+  const screenVertical = (d.axis === 'v') !== (rot === 90 || rot === 270);
+  const angle = (screenVertical ? -90 : 0) - rot;
   return (
-    <g pointerEvents="none" transform={`translate(${d.pos} ${cx}) rotate(-90)`}>
+    <g pointerEvents="none" transform={`translate(${x} ${y}) rotate(${angle})`}>
       <rect x={-text.length * fs * 0.3} y={-fs * 0.62} width={text.length * fs * 0.6} height={fs * 1.24} rx={fs * 0.3} className="divlabel-bg" />
       <text x={0} y={fs * 0.35} fontSize={fs} textAnchor="middle" className="divlabel">
         {text}
@@ -446,15 +476,70 @@ function DividerLabel({ d, text, fs }: { d: ResolvedDivider; text: string; fs: n
   );
 }
 
-function Rulers({ c, units, fs }: { c: CaseSpec; units: Units; fs: number }) {
+/** SVG transform that turns the case (origin top-left, length along x) by `rot` and keeps it at the origin. */
+export function caseTransformFor(rot: ViewRot, c: CaseSpec): string | undefined {
+  if (rot === 90) return `translate(${c.w} 0) rotate(90)`;
+  if (rot === 180) return `translate(${c.l} ${c.w}) rotate(180)`;
+  if (rot === 270) return `translate(0 ${c.l}) rotate(270)`;
+  return undefined;
+}
+
+/** case coordinates -> on-screen coordinates measured from the case's visible top-left */
+export function toScreen(p: { x: number; y: number }, rot: ViewRot, c: CaseSpec) {
+  if (rot === 90) return { x: c.w - p.y, y: p.x };
+  if (rot === 180) return { x: c.l - p.x, y: c.w - p.y };
+  if (rot === 270) return { x: p.y, y: c.l - p.x };
+  return p;
+}
+
+/** case-space delta for an on-screen nudge */
+export function screenDeltaToCase(dx: number, dy: number, rot: ViewRot) {
+  if (rot === 90) return { dx: dy, dy: -dx };
+  if (rot === 180) return { dx: -dx, dy: -dy };
+  if (rot === 270) return { dx: -dy, dy: dx };
+  return { dx, dy };
+}
+
+/** Handle and latches on the front (y = 0) wall, hinges on the back wall, drawn in the shell band. */
+function ShellMarks({ c, fs, rot }: { c: CaseSpec; fs: number; rot: ViewRot }) {
+  // Labels run along their wall as it appears on screen, never upside down.
+  const along = (x: number, y: number) => `rotate(${(rot === 90 || rot === 270 ? -90 : 0) - rot} ${x} ${y})`;
+  const handleW = Math.min(c.l * 0.32, 160);
+  const latchW = Math.min(30, c.l * 0.08);
+  const nLatch = c.l > 600 ? 3 : 2;
+  const latchXs = nLatch === 3 ? [c.l * 0.18, c.l * 0.5, c.l * 0.82] : [c.l * 0.2, c.l * 0.8];
+  const hingeXs = c.l > 450 ? [c.l * 0.2, c.l * 0.5, c.l * 0.8] : [c.l * 0.25, c.l * 0.75];
+  const by = c.w + SHELL / 2;
+  return (
+    <g pointerEvents="none" className="shell-marks">
+      <rect x={c.l / 2 - handleW / 2} y={-SHELL + 4} width={handleW} height={SHELL - 9} rx={(SHELL - 9) / 2} className="handle" />
+      {latchXs
+        .filter((x) => Math.abs(x - c.l / 2) > handleW / 2 + latchW / 2 + 2)
+        .map((x) => (
+          <rect key={x} x={x - latchW / 2} y={-SHELL + 3} width={latchW} height={SHELL - 6} rx={2} className="latch" />
+        ))}
+      {hingeXs.map((x) => (
+        <rect key={x} x={x - 9} y={c.w + 4} width={18} height={SHELL - 9} rx={1.5} className="hinge" />
+      ))}
+      <text x={c.l / 2} y={by} dy={fs * 0.3} fontSize={fs * 0.7} textAnchor="middle" className="shell-label" transform={along(c.l / 2, by)}>
+        HINGE
+      </text>
+      <text x={c.l / 2} y={-SHELL / 2 + 0.5} dy={fs * 0.3} fontSize={fs * 0.7} textAnchor="middle" className="shell-label dark" transform={along(c.l / 2, -SHELL / 2 + 0.5)}>
+        HANDLE
+      </text>
+    </g>
+  );
+}
+
+function Rulers({ l, w, units, fs }: { l: number; w: number; units: Units; fs: number }) {
   const step = units === 'in' ? MM_PER_IN / 4 : 5;
   const major = units === 'in' ? 4 : 2; // every 1" or 10 mm
-  const labelEvery = units === 'in' ? 4 : c.l > 400 ? 10 : 4; // ticks between labels
+  const labelEvery = units === 'in' ? 4 : l > 400 ? 10 : 4; // ticks between labels
   const ticksX: JSX.Element[] = [];
   const ticksY: JSX.Element[] = [];
   const y0 = -SHELL - 4;
   const x0 = -SHELL - 4;
-  for (let i = 0, v = 0; v <= c.l + 0.01; i++, v = i * step) {
+  for (let i = 0, v = 0; v <= l + 0.01; i++, v = i * step) {
     const len = i % major === 0 ? 7 : i % 2 === 0 ? 4.5 : 2.5;
     ticksX.push(<line key={i} x1={v} x2={v} y1={y0} y2={y0 - len} />);
     if (i % labelEvery === 0 && i > 0)
@@ -464,7 +549,7 @@ function Rulers({ c, units, fs }: { c: CaseSpec; units: Units; fs: number }) {
         </text>,
       );
   }
-  for (let i = 0, v = 0; v <= c.w + 0.01; i++, v = i * step) {
+  for (let i = 0, v = 0; v <= w + 0.01; i++, v = i * step) {
     const len = i % major === 0 ? 7 : i % 2 === 0 ? 4.5 : 2.5;
     ticksY.push(<line key={i} y1={v} y2={v} x1={x0} x2={x0 - len} />);
     if (i % labelEvery === 0 && i > 0)
@@ -476,8 +561,8 @@ function Rulers({ c, units, fs }: { c: CaseSpec; units: Units; fs: number }) {
   }
   return (
     <g className="ruler" pointerEvents="none">
-      <line x1={0} x2={c.l} y1={y0} y2={y0} />
-      <line y1={0} y2={c.w} x1={x0} x2={x0} />
+      <line x1={0} x2={l} y1={y0} y2={y0} />
+      <line y1={0} y2={w} x1={x0} x2={x0} />
       {ticksX}
       {ticksY}
       <text x={x0 - 9} y={y0 - 9} fontSize={fs * 0.8} textAnchor="end" className="ruler-unit">
@@ -487,11 +572,11 @@ function Rulers({ c, units, fs }: { c: CaseSpec; units: Units; fs: number }) {
   );
 }
 
-function GridLines({ c, units }: { c: CaseSpec; units: Units }) {
+function GridLines({ l, w, units }: { l: number; w: number; units: Units }) {
   const step = units === 'in' ? MM_PER_IN : 10;
   const lines: JSX.Element[] = [];
-  for (let v = step; v < c.l; v += step) lines.push(<line key={'x' + v} x1={v} x2={v} y1={0} y2={c.w} />);
-  for (let v = step; v < c.w; v += step) lines.push(<line key={'y' + v} y1={v} y2={v} x1={0} x2={c.l} />);
+  for (let v = step; v < l; v += step) lines.push(<line key={'x' + v} x1={v} x2={v} y1={0} y2={w} />);
+  for (let v = step; v < w; v += step) lines.push(<line key={'y' + v} y1={v} y2={v} x1={0} x2={l} />);
   return (
     <g className="gridlines" pointerEvents="none">
       {lines}
@@ -538,7 +623,7 @@ function PluckGrid({ layout, c }: { layout: Layout; c: CaseSpec }) {
 }
 
 /** Live gap measurements from the selected item to the nearest obstacle on each side. */
-function GapReadout({ item, layout, c, solve, units, fs }: { item: PlacedItem; layout: Layout; c: CaseSpec; solve: DividerSolve; units: Units; fs: number }) {
+function GapReadout({ item, layout, c, solve, units, fs, up }: { item: PlacedItem; layout: Layout; c: CaseSpec; solve: DividerSolve; units: Units; fs: number; up: (x: number, y: number) => string | undefined }) {
   const r = itemRect(item);
   const ins = wallInset(layout);
   const blockers: Rect[] = [...layout.items.filter((i) => i.uid !== item.uid).map(itemRect)];
@@ -565,7 +650,7 @@ function GapReadout({ item, layout, c, solve, units, fs }: { item: PlacedItem; l
     v > 0.4 ? (
       <g key={key}>
         <line x1={x1} y1={y1} x2={x2} y2={y2} className="gap-line" strokeWidth={0.5} />
-        <text x={(x1 + x2) / 2 + (y1 === y2 ? 0 : fs * 0.4)} y={(y1 + y2) / 2 - (y1 === y2 ? fs * 0.35 : -fs * 0.3)} fontSize={fs * 0.8} textAnchor={y1 === y2 ? 'middle' : 'start'} className="gap-text">
+        <text x={(x1 + x2) / 2} y={(y1 + y2) / 2} dy={fs * 0.3} fontSize={fs * 0.8} textAnchor="middle" className="gap-text" transform={up((x1 + x2) / 2, (y1 + y2) / 2)}>
           {fmt(v, units)}
         </text>
       </g>

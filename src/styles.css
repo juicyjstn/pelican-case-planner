@@ -116,9 +116,10 @@ a { color: var(--accent); }
 .btn.danger { color: var(--err); }
 .btn.icon { padding: 6px 8px; line-height: 0; display: inline-grid; place-items: center; }
 .btn.icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.undo-group { display: inline-flex; }
-.undo-group .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.undo-group .btn:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; }
+.undo-group { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--panel-2); }
+.undo-group .btn { border: 0; border-radius: 0; background: none; }
+.undo-group .btn + .btn { border-left: 1px solid var(--line); }
+.undo-group .btn:hover:not(:disabled) { background: var(--line); }
 .btn.small { padding: 4px 8px; font-size: 12.5px; }
 .btn.wide { width: 100%; margin-top: 8px; }
 .btn.file { display: inline-flex; align-items: center; }
@@ -233,6 +234,15 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .editor2d { flex: 1; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
 .editor2d.tool-divider-h, .editor2d.tool-divider-v { cursor: crosshair; }
 .preview3d { flex: 1; min-height: 0; }
+.seg.rotate { align-items: center; }
+.seg.rotate button { padding: 4px 7px; line-height: 0; color: var(--text); }
+.seg.rotate svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.seg.rotate .deg { font-size: 12px; color: var(--muted); min-width: 32px; text-align: center; font-variant-numeric: tabular-nums; }
+.shell-marks .handle { fill: #0b0c0e; stroke: #3d434b; stroke-width: .6; }
+.shell-marks .latch { fill: #2f343b; stroke: #4a5059; stroke-width: .5; }
+.shell-marks .hinge { fill: #101214; }
+.shell-label { fill: #6f7781; font-weight: 700; letter-spacing: .12em; }
+.shell-label.dark { fill: #8a929c; }
 .preview3d.loading { display: grid; place-items: center; color: var(--muted); }
 .preview3d canvas { width: 100% !important; height: 100% !important; display: block; }
 .stage-badge { position: absolute; right: 12px; bottom: 12px; background: var(--err); color: #fff; font-weight: 600; font-size: 12.5px; padding: 4px 10px; border-radius: 20px; }

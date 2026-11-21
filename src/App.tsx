@@ -9,7 +9,7 @@ import { decodeHash, downloadText, normalizeLayout, safeStorage, shareUrl } from
 import { fmt } from './lib/units';
 import { colorFor, defaultSettings } from './data/defaults';
 import { GEAR } from './data/gear';
-import { Editor2D, type Selection, type Tool } from './components/Editor2D';
+import { Editor2D, screenDeltaToCase, type Selection, type Tool, type ViewRot } from './components/Editor2D';
 import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { PrintSheets, TemplateArt, type Paper } from './components/PrintSheets';
@@ -78,6 +78,12 @@ export default function App() {
   const [tool, setTool] = useState<Tool>('select');
   const [selection, setSelection] = useState<Selection>(null);
   const [showLid, setShowLid] = useState(false);
+  const [rot, setRot] = useState<ViewRot>(() => {
+    const v = Number(store.get('pcp.rot'));
+    return ([0, 90, 180, 270] as const).includes(v as ViewRot) ? (v as ViewRot) : 0;
+  });
+  const [pose, setPose] = useState<'flat' | 'standing'>(() => (store.get('pcp.pose') === 'standing' ? 'standing' : 'flat'));
+  const turn = (by: 90 | -90) => setRot((r) => (((r + by + 360) % 360) as ViewRot));
   const [paper, setPaper] = useState<Paper>(() => (store.get('pcp.paper') as Paper) || 'letter');
   const [toast, setToast] = useState<string | null>(null);
   const [myGear, setMyGearState] = useState<GearSpec[]>(() => {
@@ -123,6 +129,8 @@ export default function App() {
   }, []);
   useEffect(() => store.set('pcp.units', units), [units]);
   useEffect(() => store.set('pcp.mode', mode), [mode]);
+  useEffect(() => store.set('pcp.rot', String(rot)), [rot]);
+  useEffect(() => store.set('pcp.pose', pose), [pose]);
   useEffect(() => store.set('pcp.paper', paper), [paper]);
 
   const flash = (msg: string) => {
@@ -176,8 +184,12 @@ export default function App() {
       } else if (e.key.startsWith('Arrow') && selection) {
         e.preventDefault();
         const step = e.altKey ? 0.5 : e.shiftKey ? layout.settings.grid * 8 : layout.settings.grid || 1;
-        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
-        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        // Arrows move things the way they look on screen, whatever the plan rotation.
+        const { dx, dy } = screenDeltaToCase(
+          e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0,
+          e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0,
+          rot,
+        );
         if (selection.kind === 'item') set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, x: i.x + dx, y: i.y + dy } : i)) }));
         else
           set((L) => ({
@@ -307,6 +319,7 @@ export default function App() {
                   </>
                 )}
               </div>
+              <RotateControl rot={rot} turn={turn} />
               <span className="tip">
                 {tool === 'select'
                   ? 'Drag to move · R rotate · arrows nudge · scroll to zoom · double-click to fit'
@@ -325,19 +338,29 @@ export default function App() {
               onSelect={setSelection}
               set={set}
               checkpoint={checkpoint}
+              rot={rot}
             />
           </div>
         )}
         {mode !== '2d' && (
           <div className="pane pane3d">
             <div className="toolbar">
+              <div className="seg" role="group" aria-label="Case pose">
+                <button className={pose === 'flat' ? 'on' : ''} onClick={() => setPose('flat')} title="Lying flat, lid open">
+                  Lying flat
+                </button>
+                <button className={pose === 'standing' ? 'on' : ''} onClick={() => setPose('standing')} title="Standing on the edge at the bottom of the plan view">
+                  Standing
+                </button>
+              </div>
+              {(pose === 'standing' || mode === '3d') && <RotateControl rot={rot} turn={turn} />}
               <label className="check">
                 <input type="checkbox" checked={showLid} onChange={(e) => setShowLid(e.target.checked)} /> Show lid space
               </label>
-              <span className="tip">Drag to orbit · scroll to zoom · right-drag to pan</span>
+              <span className="tip">{pose === 'standing' ? 'Stands on the edge at the bottom of the plan · rotate to choose' : 'Drag to orbit · scroll to zoom · right-drag to pan'}</span>
             </div>
             <Suspense fallback={<div className="preview3d loading">Loading 3D…</div>}>
-              <Preview3D layout={layout} c={c} solve={solve} issues={issues} showLid={showLid} selectedId={selection?.id} />
+              <Preview3D layout={layout} c={c} solve={solve} issues={issues} showLid={showLid} selectedId={selection?.id} rot={rot} pose={pose} />
             </Suspense>
           </div>
         )}
@@ -349,6 +372,26 @@ export default function App() {
       {toast && <div className="toast">{toast}</div>}
 
       <PrintSheets layout={layout} c={c} solve={solve} labelOf={labelOf} cuts={cuts} units={units} paper={paper} />
+    </div>
+  );
+}
+
+function RotateControl({ rot, turn }: { rot: ViewRot; turn: (by: 90 | -90) => void }) {
+  return (
+    <div className="seg rotate" role="group" aria-label="Rotate case">
+      <button onClick={() => turn(-90)} title="Rotate case 90° counter-clockwise" aria-label="Rotate left">
+        <svg viewBox="0 0 24 24" aria-hidden>
+          <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+          <path d="M3 3v5h5" />
+        </svg>
+      </button>
+      <span className="deg">{rot}°</span>
+      <button onClick={() => turn(90)} title="Rotate case 90° clockwise" aria-label="Rotate right">
+        <svg viewBox="0 0 24 24" aria-hidden>
+          <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+          <path d="M21 3v5h-5" />
+        </svg>
+      </button>
     </div>
   );
 }
