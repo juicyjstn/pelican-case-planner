@@ -82,6 +82,11 @@ export default function App() {
     const v = Number(store.get('pcp.rot'));
     return ([0, 90, 180, 270] as const).includes(v as ViewRot) ? (v as ViewRot) : 0;
   });
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = store.get('pcp.theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+    return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  });
   const [pose, setPose] = useState<'flat' | 'standing'>(() => (store.get('pcp.pose') === 'standing' ? 'standing' : 'flat'));
   const turn = (by: 90 | -90) => setRot((r) => (((r + by + 360) % 360) as ViewRot));
   const [paper, setPaper] = useState<Paper>(() => (store.get('pcp.paper') as Paper) || 'letter');
@@ -129,6 +134,10 @@ export default function App() {
   }, []);
   useEffect(() => store.set('pcp.units', units), [units]);
   useEffect(() => store.set('pcp.mode', mode), [mode]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    store.set('pcp.theme', theme);
+  }, [theme]);
   useEffect(() => store.set('pcp.rot', String(rot)), [rot]);
   useEffect(() => store.set('pcp.pose', pose), [pose]);
   useEffect(() => store.set('pcp.paper', paper), [paper]);
@@ -287,6 +296,8 @@ export default function App() {
           <AppMenu
             units={units}
             setUnits={setUnits}
+            theme={theme}
+            setTheme={setTheme}
             paper={paper}
             onNew={newLayout}
             onOpen={() => fileRef.current?.click()}

@@ -5,6 +5,8 @@ import type { Paper } from './PrintSheets';
 interface Props {
   units: Units;
   setUnits: (u: Units) => void;
+  theme: 'light' | 'dark';
+  setTheme: (t: 'light' | 'dark') => void;
   paper: Paper;
   onNew: () => void;
   onOpen: () => void;
@@ -34,6 +36,8 @@ const ICONS = {
   svg: 'M4 4h16v16H4zM4 15l5-5 4 4 3-3 4 4',
   json: 'M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1',
   ruler: 'M3 17 17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2',
+  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  moon: 'M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z',
 };
 
 const Chevron = ({ open }: { open: boolean }) => (
@@ -99,6 +103,23 @@ export function AppMenu(p: Props) {
               </button>
               <button className={p.units === 'mm' ? 'on' : ''} onClick={() => p.setUnits('mm')}>
                 mm
+              </button>
+            </div>
+          </div>
+
+          <div className="menu-item static">
+            <Icon d={p.theme === 'light' ? ICONS.sun : ICONS.moon} />
+            <span className="mi-text">Theme</span>
+            <div className="seg small theme-toggle" role="group" aria-label="Theme">
+              <button className={p.theme === 'light' ? 'on' : ''} onClick={() => p.setTheme('light')} aria-label="Light mode" title="Light mode">
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <path d={ICONS.sun} />
+                </svg>
+              </button>
+              <button className={p.theme === 'dark' ? 'on' : ''} onClick={() => p.setTheme('dark')} aria-label="Dark mode" title="Dark mode">
+                <svg viewBox="0 0 24 24" aria-hidden>
+                  <path d={ICONS.moon} />
+                </svg>
               </button>
             </div>
           </div>
