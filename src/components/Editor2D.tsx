@@ -11,6 +11,7 @@ import {
   wallInset,
   wheelSide,
   computeBays,
+  keepOut,
   type DividerSolve,
   type Issue,
   type SnapGuide,
@@ -329,6 +330,10 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
           <rect width="3" height="3" fill="var(--pluck)" />
           <path d="M0 0v3" stroke="var(--pluck-line)" strokeWidth="1" />
         </pattern>
+        <pattern id="roomhatch" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="3" height="3" fill="rgba(54,195,255,.10)" />
+          <path d="M0 0v3" stroke="rgba(54,195,255,.45)" strokeWidth=".6" />
+        </pattern>
         <filter id="lift" x="-10%" y="-10%" width="130%" height="130%">
           <feDropShadow dx="0.8" dy="1.4" stdDeviation="1.2" floodOpacity="0.45" />
         </filter>
@@ -443,6 +448,17 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
             onPointerDown={(e) => onItemDown(e, it)}
             style={{ cursor: tool === 'select' ? 'grab' : undefined }}
           >
+            {it.room && (it.room.t || it.room.r || it.room.b || it.room.l) ? (
+              <rect
+                x={-(it.room.l ?? 0)}
+                y={-(it.room.t ?? 0)}
+                width={f.w + (it.room.l ?? 0) + (it.room.r ?? 0)}
+                height={f.d + (it.room.t ?? 0) + (it.room.b ?? 0)}
+                rx={2}
+                fill="url(#roomhatch)"
+                className="room-zone"
+              />
+            ) : null}
             <rect width={f.w} height={f.d} rx={2} fill={it.color} filter="url(#lift)" />
             {it.image ? (
               <image href={it.image} width={f.w} height={f.d} preserveAspectRatio="none" clipPath={`url(#clip-${it.uid})`} />
@@ -689,7 +705,7 @@ export function pluckCells(layout: Layout, c: CaseSpec) {
   const oy = (c.w - rows * s) / 2;
   const plucked = new Set<string>();
   for (const it of layout.items) {
-    const r = itemRect(it);
+    const r = keepOut(it); // pluck room for cables too
     const c0 = Math.max(0, Math.floor((r.x - cl - ox) / s));
     const c1 = Math.min(cols - 1, Math.floor((r.x + r.w + cl - ox - 0.01) / s));
     const r0 = Math.max(0, Math.floor((r.y - cl - oy) / s));

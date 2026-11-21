@@ -15,6 +15,7 @@ const STYLES: DividerStyle[] = ['none', 'foam', 'padded', 'trekpak'];
 const ORIENTS: Orientation[] = ['flat', 'side', 'end'];
 const WHEELS: WheelSide[] = ['none', 'left', 'right'];
 const OVERRIDE_KEYS = ['l', 'w', 'base', 'lid'] as const;
+const ROOM_KEYS = ['t', 'r', 'b', 'l'] as const;
 const SETTING_KEYS: (keyof Settings)[] = [
   'floorPad',
   'clearance',
@@ -159,6 +160,8 @@ export function encodeCompact(layout: Layout): string {
     if (dimsChanged) flags |= 16;
     if (colorChanged) flags |= 32;
     if (labelChanged) flags |= 64;
+    const hasRoom = !!it.room && ROOM_KEYS.some((k) => (it.room![k] ?? 0) > 0);
+    if (hasRoom) flags |= 128; // extras follow the position
     w.u(flags);
     if (inLib) w.fixed(hash24(it.gearId!), 3);
     else {
@@ -169,6 +172,10 @@ export function encodeCompact(layout: Layout): string {
     if (labelChanged) w.str(it.label);
     if (colorChanged) w.fixed(parseInt(it.color.slice(1, 7), 16) || 0, 3);
     w.len(it.x), w.len(it.y);
+    if (hasRoom) {
+      w.u(1); // extras mask: bit0 = room
+      for (const k of ROOM_KEYS) w.len(it.room![k] ?? 0);
+    }
   }
 
   const index = new Map(layout.dividers.map((d, i) => [d.uid, i]));
@@ -238,6 +245,17 @@ export function decodeCompact(code: string): Layout | null {
       const color = flags & 32 ? '#' + r.fixed(3).toString(16).padStart(6, '0') : colorFor(category);
       const x = r.len();
       const y = r.len();
+            let room: PlacedItem['room'];
+      if (flags & 128) {
+        const extras = r.u();
+        if (extras & 1) {
+          room = {};
+          for (const k of ROOM_KEYS) {
+            const v = r.len();
+            if (v > 0) room[k] = v;
+          }
+        }
+      }
       items.push({
         uid: 'i' + n.toString(36) + Math.random().toString(36).slice(2, 6),
         gearId,
@@ -251,6 +269,7 @@ export function decodeCompact(code: string): Layout | null {
         x,
         y,
         color,
+        room,
       });
     }
 

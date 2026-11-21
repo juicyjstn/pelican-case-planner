@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CaseSpec, Layout, Orientation, PlacedItem, Settings, Units } from '../types';
-import { baseDepth, boxInDividers, dividerHeight, footprint, heal, refit, removeDivider, uid, wallInset, type DividerSolve, type Issue } from '../lib/geometry';
+import { baseDepth, boxInDividers, caseSideAt, rotateRoom, dividerHeight, footprint, heal, refit, removeDivider, uid, wallInset, type DividerSolve, type Issue } from '../lib/geometry';
 import { planStrips, type Cut } from '../lib/cutlist';
 import { fmt, fmtBoth, parseLength } from '../lib/units';
 import { pluckCells, type Selection } from './Editor2D';
@@ -16,6 +16,8 @@ interface Props {
   selection: Selection;
   onSelect: (s: Selection) => void;
   set: (next: Layout | ((p: Layout) => Layout), commit?: boolean) => void;
+  /** plan rotation, so 'extra room' sides match what's on screen */
+  viewRot?: number;
 }
 
 export function LengthInput({ mm, units, onCommit, min = 0 }: { mm: number; units: Units; onCommit: (v: number) => void; min?: number }) {
@@ -71,7 +73,7 @@ export function Inspector(props: Props) {
   );
 }
 
-function ItemPanel({ item, layout, c, units, set, onSelect }: Props & { item: PlacedItem }) {
+function ItemPanel({ item, layout, c, units, set, onSelect, viewRot }: Props & { item: PlacedItem }) {
   const f = footprint(item);
   const upd = (patch: Partial<PlacedItem>) => set((L) => ({ ...L, items: L.items.map((i) => (i.uid === item.uid ? { ...i, ...patch } : i)) }));
   const room = c.d - layout.settings.floorPad;
@@ -124,7 +126,7 @@ function ItemPanel({ item, layout, c, units, set, onSelect }: Props & { item: Pl
             {o.label}
           </button>
         ))}
-        <button onClick={() => upd({ rot: !item.rot })} title="Rotate 90° (R)">
+        <button onClick={() => upd({ rot: !item.rot, room: rotateRoom(item.room, !item.rot) })} title="Rotate 90° (R)">
           <svg viewBox="0 0 24 24" className="inline-icon" aria-hidden><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg> 90°
         </button>
       </div>
@@ -137,6 +139,7 @@ function ItemPanel({ item, layout, c, units, set, onSelect }: Props & { item: Pl
           {fmt(f.h, units)} tall · {fmt(Math.max(0, base - f.h), units)} under base rim · {fmt(Math.max(0, room - f.h), units)} to lid
         </div>
       </div>
+      <RoomEditor item={item} units={units} viewRot={viewRot ?? 0} upd={upd} />
       <div className="grid2">
         <label>
           From left end
@@ -235,6 +238,44 @@ function DividerPanel({ id, layout, c, solve, units, set, onSelect }: Props & { 
         </button>
       </div>
     </Section>
+  );
+}
+
+/** Extra keep-clear room on each side of an item, laid out as you see it on screen. */
+function RoomEditor({ item, units, viewRot, upd }: { item: PlacedItem; units: Units; viewRot: number; upd: (p: Partial<PlacedItem>) => void }) {
+  const [open, setOpen] = useState(() => !!item.room && Object.values(item.room).some((v) => (v ?? 0) > 0));
+  const side = (screen: 't' | 'r' | 'b' | 'l') => caseSideAt(screen, viewRot);
+  const value = (screen: 't' | 'r' | 'b' | 'l') => item.room?.[side(screen)] ?? 0;
+  const setSide = (screen: 't' | 'r' | 'b' | 'l', v: number) => upd({ room: { ...item.room, [side(screen)]: v } });
+  if (!open)
+    return (
+      <button className="link small-link" onClick={() => setOpen(true)}>
+        + Extra room for cables or knobs
+      </button>
+    );
+  const cell = (screen: 't' | 'r' | 'b' | 'l', label: string) => (
+    <label className={`room-${screen}`}>
+      {label}
+      <LengthInput mm={value(screen)} units={units} onCommit={(v) => setSide(screen, v)} />
+    </label>
+  );
+  return (
+    <div className="room-editor">
+      <div className="room-head">
+        <span>Extra room</span>
+        <button className="link small-link" onClick={() => (upd({ room: undefined }), setOpen(false))}>
+          Clear
+        </button>
+      </div>
+      <div className="room-grid">
+        {cell('t', '↑ Above')}
+        {cell('l', '← Left')}
+        <div className="room-box" title={item.label} />
+        {cell('r', 'Right →')}
+        {cell('b', '↓ Below')}
+      </div>
+      <p className="hint">Kept clear for cables, knobs or a handle. Snapping, Box it in and the template all leave this space; it turns with the item.</p>
+    </div>
   );
 }
 

@@ -4,6 +4,7 @@ export type Units = 'in' | 'mm';
 export type DividerStyle = 'none' | 'foam' | 'padded' | 'trekpak';
 export type Orientation = 'flat' | 'side' | 'end';
 export type WheelSide = 'left' | 'right' | 'none';
+export type Room = { t?: number; r?: number; b?: number; l?: number };
 export type CaseOverride = { l?: number; w?: number; base?: number; lid?: number };
 
 export interface CaseSpec {
@@ -68,6 +69,11 @@ export interface PlacedItem {
   x: number;
   y: number;
   color: string;
+  /**
+   * Extra keep-clear room around the item (cables, knobs, handles), in case-plan terms:
+   * t = hinge side, b = handle side, l = left end, r = right end.
+   */
+  room?: Room;
   /** optional top-down photo, data URL (never put in share links) */
   image?: string;
 }

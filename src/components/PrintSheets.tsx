@@ -1,5 +1,5 @@
 import type { CaseSpec, Layout, Units } from '../types';
-import { dividerHeight, footprint, wallInset, type DividerSolve } from '../lib/geometry';
+import { dividerHeight, footprint, keepOut, wallInset, type DividerSolve } from '../lib/geometry';
 import type { Cut } from '../lib/cutlist';
 import { fmt, MM_PER_IN } from '../lib/units';
 import { pluckCells } from './Editor2D';
@@ -77,6 +77,10 @@ export function TemplateArt({ layout, c, solve, labelOf, units }: Omit<Props, 'c
             {layout.style === 'foam' && cl > 0 && (
               <rect x={it.x - cl} y={it.y - cl} width={f.w + 2 * cl} height={f.d + 2 * cl} fill="none" stroke="#000" strokeWidth={0.25} strokeDasharray="1.5 1" />
             )}
+            {it.room && (() => {
+              const k = keepOut(it);
+              return k.w > f.w || k.h > f.d ? <rect x={k.x} y={k.y} width={k.w} height={k.h} fill="none" stroke="#000" strokeWidth={0.25} strokeDasharray="3 1.5" /> : null;
+            })()}
             <rect x={it.x} y={it.y} width={f.w} height={f.d} fill="none" stroke="#000" strokeWidth={0.4} />
             <line x1={it.x} y1={it.y} x2={it.x + f.w} y2={it.y + f.d} stroke="#000" strokeWidth={0.1} />
             <line x1={it.x + f.w} y1={it.y} x2={it.x} y2={it.y + f.d} stroke="#000" strokeWidth={0.1} />

@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GearSpec, Layout, PlacedItem, Units } from './types';
 import { useHistory } from './lib/history';
-import { boxInDividers, checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
+import { boxInDividers, rotateRoom, checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
 import { buildCutList } from './lib/cutlist';
 import { decodeHash, downloadText, normalizeLayout, safeStorage, shareUrl } from './lib/share';
 import { fmt } from './lib/units';
@@ -209,7 +209,7 @@ export default function App() {
       } else if (e.key === 'h' && usesDividers) setTool((x) => (x === 'divider-h' ? 'select' : 'divider-h'));
       else if (e.key === 'v' && usesDividers) setTool((x) => (x === 'divider-v' ? 'select' : 'divider-v'));
       else if (e.key === 'r' && selection?.kind === 'item') {
-        set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, rot: !i.rot } : i)) }));
+        set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, rot: !i.rot, room: rotateRoom(i.room, !i.rot) } : i)) }));
       } else if (e.key.startsWith('Arrow') && selection) {
         e.preventDefault();
         const step = e.altKey ? 0.5 : e.shiftKey ? layout.settings.grid * 8 : layout.settings.grid || 1;
@@ -445,7 +445,7 @@ export default function App() {
             layout={layout}
             selection={selection}
             labelOf={labelOf}
-            onRotate={() => set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, rot: !i.rot } : i)) }))}
+            onRotate={() => set((L) => ({ ...L, items: L.items.map((i) => (i.uid === selection.id ? { ...i, rot: !i.rot, room: rotateRoom(i.room, !i.rot) } : i)) }))}
             onBoxIn={() => {
               const it = layout.items.find((i) => i.uid === selection.id);
               if (it) set((L) => ({ ...L, dividers: boxInDividers(it, L, c) }));
@@ -473,7 +473,7 @@ export default function App() {
             </svg>
           </button>
         </div>
-        <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} />
+        <Inspector layout={layout} c={c} solve={solve} cuts={cuts} issues={issues} units={units} selection={selection} onSelect={setSelection} set={set} viewRot={rot} />
       </div>
       {narrow && (leftOpen || rightOpen) && <div className="backdrop" onClick={() => (setLeftOpen(false), setRightOpen(false))} />}
 

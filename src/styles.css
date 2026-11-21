@@ -210,6 +210,11 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
 .note { font-size: 12px; margin: 0; color: var(--muted); }
 .note.warn { color: var(--warn); }
+.room-editor { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px dashed rgba(54,195,255,.5); border-radius: 8px; }
+.room-head { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 600; }
+.room-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-areas: '. t .' 'l box r' '. b .'; gap: 6px; align-items: end; }
+.room-t { grid-area: t; } .room-b { grid-area: b; } .room-l { grid-area: l; } .room-r { grid-area: r; }
+.room-box { grid-area: box; height: 34px; border-radius: 5px; background: repeating-linear-gradient(45deg, rgba(54,195,255,.12), rgba(54,195,255,.12) 4px, rgba(54,195,255,.28) 4px, rgba(54,195,255,.28) 6px); border: 1px solid rgba(54,195,255,.5); align-self: center; }
 .small-link { font-size: 12.5px; align-self: flex-start; }
 .measured { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px dashed var(--line); border-radius: 8px; }
 .measured-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; }
@@ -324,6 +329,7 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .bay-outline { fill: none; stroke: #36c3ff; stroke-opacity: .35; stroke-width: .5; stroke-dasharray: 3 2; }
 .bay-tag { fill: rgba(10, 30, 40, .82); stroke: #36c3ff; stroke-width: .4; }
 .bay-text { fill: #8fe0ff; font-weight: 650; font-variant-numeric: tabular-nums; }
+.room-zone { stroke: rgba(54,195,255,.6); stroke-width: .5; stroke-dasharray: 2 1.5; }
 .guide { stroke: var(--accent); stroke-dasharray: 2 1.5; }
 .gap-line { stroke: #4fc3ff; marker-start: none; }
 .gap-text { fill: #4fc3ff; font-weight: 650; paint-order: stroke; stroke: var(--stage); stroke-width: .8; font-variant-numeric: tabular-nums; }

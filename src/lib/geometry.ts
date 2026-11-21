@@ -1,4 +1,4 @@
-import type { CaseSpec, Divider, DividerEnd, Layout, PlacedItem, Rect, ResolvedDivider, WheelSide } from '../types';
+import type { CaseSpec, Divider, DividerEnd, Layout, PlacedItem, Rect, ResolvedDivider, Room, WheelSide } from '../types';
 import { CASES } from '../data/cases';
 
 const EPS = 0.5;
@@ -67,6 +67,32 @@ export function footprint(it: Pick<PlacedItem, 'gw' | 'gd' | 'gh' | 'orient' | '
 export function itemRect(it: PlacedItem): Rect {
   const f = footprint(it);
   return { x: it.x, y: it.y, w: f.w, h: f.d };
+}
+
+/** The item plus its extra room: the area nothing else may occupy. */
+export function keepOut(it: PlacedItem): Rect {
+  const r = itemRect(it);
+  const m = it.room;
+  if (!m) return r;
+  const l = m.l ?? 0, t = m.t ?? 0;
+  return { x: r.x - l, y: r.y - t, w: r.w + l + (m.r ?? 0), h: r.h + t + (m.b ?? 0) };
+}
+
+const SIDES = ['t', 'r', 'b', 'l'] as const;
+/** Turn an item's extra room with it: a quarter turn clockwise (or back). */
+export function rotateRoom(room: Room | undefined, clockwise: boolean): Room | undefined {
+  if (!room) return room;
+  const out: Room = {};
+  SIDES.forEach((side, i) => {
+    const to = SIDES[(i + (clockwise ? 1 : 3)) % 4];
+    if (room[side] != null) out[to] = room[side];
+  });
+  return out;
+}
+/** Which case side ('t','r','b','l') is on a given screen side for a plan rotation. */
+export function caseSideAt(screenSide: 't' | 'r' | 'b' | 'l', rot: number): 't' | 'r' | 'b' | 'l' {
+  const i = SIDES.indexOf(screenSide);
+  return SIDES[(i - rot / 90 + 8) % 4];
 }
 
 export function overlaps(a: Rect, b: Rect, eps = 0.05): boolean {
@@ -237,9 +263,16 @@ export function snapItem(
   threshold: number,
 ): { x: number; y: number; guides: SnapGuide[] } {
   const { clearance: cl, grid, snap } = layout.settings;
-  const f = footprint(item);
   const guides: SnapGuide[] = [];
   if (!snap) return { x, y, guides };
+  // Snap the keep-out box (item + extra room), then convert back to the item's position.
+  const ko = keepOut(item);
+  const dxk = item.x - ko.x;
+  const dyk = item.y - ko.y;
+  const f = { w: ko.w, d: ko.h };
+  const ix = x, iy = y;
+  x = ix - dxk;
+  y = iy - dyk;
 
   const ins = wallInset(layout);
   const leftC: number[] = [ins + cl];
@@ -254,7 +287,7 @@ export function snapItem(
   }
   for (const o of layout.items) {
     if (o.uid === item.uid) continue;
-    const r = itemRect(o);
+    const r = keepOut(o);
     leftC.push(r.x + r.w + cl, r.x);
     rightC.push(r.x - cl, r.x + r.w);
     topC.push(r.y + r.h + cl, r.y);
@@ -283,7 +316,7 @@ export function snapItem(
     guides.push({ axis: 'y', at: b });
   } else if (grid > 0) ny = Math.round(y / grid) * grid;
 
-  return { x: nx, y: ny, guides };
+  return { x: nx + dxk, y: ny + dyk, guides };
 }
 
 /** Snap a divider centreline so a face sits `clearance` off a nearby gear edge. */
@@ -297,7 +330,7 @@ export function snapDividerPos(
   if (!snap) return { pos, guide: null };
   const cands: number[] = [];
   for (const it of layout.items) {
-    const r = itemRect(it);
+    const r = keepOut(it);
     if (d.axis === 'h') {
       if (r.x + r.w < d.s0 || r.x > d.s1) continue;
       cands.push(r.y - cl - t / 2, r.y + r.h + cl + t / 2);
@@ -314,15 +347,18 @@ export function snapDividerPos(
 
 /** Find a free spot for a new item, scanning left-to-right, top-to-bottom. */
 export function findFreeSpot(item: PlacedItem, layout: Layout, c: CaseSpec, resolved: Map<string, ResolvedDivider>) {
-  const f = footprint(item);
+  const ko = keepOut(item);
+  const dxk = item.x - ko.x;
+  const dyk = item.y - ko.y;
+  const f = { w: ko.w, d: ko.h };
   const step = 5;
   const cl = layout.settings.clearance;
   const ins = wallInset(layout);
-  const blockers: Rect[] = [...layout.items.map(itemRect), ...[...resolved.values()].map((r) => r.rect)];
+  const blockers: Rect[] = [...layout.items.map(keepOut), ...[...resolved.values()].map((r) => r.rect)];
   for (let y = ins + cl; y + f.d <= c.w - ins - cl + 0.01; y += step) {
     for (let x = ins + cl; x + f.w <= c.l - ins - cl + 0.01; x += step) {
       const r = { x: x - cl, y: y - cl, w: f.w + 2 * cl, h: f.d + 2 * cl };
-      if (!blockers.some((b) => overlaps(r, b))) return { x, y };
+      if (!blockers.some((b) => overlaps(r, b))) return { x: x + dxk, y: y + dyk };
     }
   }
   return { x: Math.max(0, (c.l - f.w) / 2), y: Math.max(0, (c.w - f.d) / 2) };
@@ -332,7 +368,7 @@ export function findFreeSpot(item: PlacedItem, layout: Layout, c: CaseSpec, reso
 export function boxInDividers(item: PlacedItem, layout: Layout, c: CaseSpec): Divider[] {
   const t = layout.settings.dividerThickness;
   const cl = layout.settings.clearance;
-  const r = itemRect(item);
+  const r = keepOut(item);
   const ins = wallInset(layout);
   let list = [...layout.dividers];
   const exists = (axis: 'h' | 'v', pos: number) => list.some((d) => d.axis === axis && Math.abs(d.pos - pos) < 1);
@@ -373,8 +409,11 @@ export function checkLayout(layout: Layout, c: CaseSpec, solve: DividerSolve, fm
   const pad = layout.settings.floorPad;
   const ins = wallInset(layout);
   const caseRect: Rect = { x: ins, y: ins, w: c.l - 2 * ins, h: c.w - 2 * ins };
-  const rects = layout.items.map((it) => ({ it, r: itemRect(it), f: footprint(it) }));
-  for (const { it, r, f } of rects) {
+  const rects = layout.items.map((it) => ({ it, r: itemRect(it), k: keepOut(it), f: footprint(it) }));
+  for (const { it, r, k, f } of rects) {
+    if (k !== r && (k.x < caseRect.x - 0.05 || k.y < caseRect.y - 0.05 || k.x + k.w > caseRect.x + caseRect.w + 0.05 || k.y + k.h > caseRect.y + caseRect.h + 0.05)) {
+      issues.push({ severity: 'warn', target: it.uid, message: `${it.label}'s extra room runs past the wall` });
+    }
     if (r.x < caseRect.x - 0.05 || r.y < caseRect.y - 0.05 || r.x + r.w > caseRect.x + caseRect.w + 0.05 || r.y + r.h > caseRect.y + caseRect.h + 0.05) {
       issues.push({ severity: 'error', target: it.uid, message: `${it.label} sticks out past the ${ins ? 'perimeter wall' : 'case wall'}` });
     }
@@ -393,12 +432,19 @@ export function checkLayout(layout: Layout, c: CaseSpec, solve: DividerSolve, fm
     for (let j = i + 1; j < rects.length; j++) {
       if (overlaps(rects[i].r, rects[j].r)) {
         issues.push({ severity: 'error', target: rects[i].it.uid, message: `${rects[i].it.label} overlaps ${rects[j].it.label}` });
+      } else if (overlaps(rects[i].k, rects[j].r) || overlaps(rects[i].r, rects[j].k)) {
+        const [a, b] = overlaps(rects[i].k, rects[j].r) ? [rects[i], rects[j]] : [rects[j], rects[i]];
+        issues.push({ severity: 'error', target: a.it.uid, message: `${b.it.label} sits in ${a.it.label}'s extra room` });
       }
     }
     if (layout.style === 'padded' || layout.style === 'trekpak') {
       for (const d of solve.resolved.values()) {
         if (overlaps(rects[i].r, d.rect)) {
           issues.push({ severity: 'error', target: rects[i].it.uid, message: `${rects[i].it.label} is cut by a divider` });
+          break;
+        }
+        if (overlaps(rects[i].k, d.rect)) {
+          issues.push({ severity: 'error', target: rects[i].it.uid, message: `A divider blocks ${rects[i].it.label}'s extra room` });
           break;
         }
       }
