@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { CaseSpec, Layout } from '../types';
-import { baseDepth, dividerHeight, footprint, wallInset, type DividerSolve, type Issue } from '../lib/geometry';
+import { baseDepth, dividerHeight, footprint, wallInset, wheelSide, type DividerSolve, type Issue } from '../lib/geometry';
 import type { ViewRot } from './Editor2D';
 
 interface Props {
@@ -44,6 +44,7 @@ function labelTexture(text: string, color: string, w: number, d: number): THREE.
 }
 
 export function Preview3D({ layout, c, solve, issues, showLid, selectedId, rot, pose }: Props) {
+  const wheels = wheelSide(layout, c);
   const hostRef = useRef<HTMLDivElement>(null);
   const ctx = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -160,15 +161,40 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId, rot, 
     box(WALL, base, c.w, shellMat, -c.l / 2 - WALL / 2, base / 2, 0);
     box(WALL, base, c.w, shellMat, c.l / 2 + WALL / 2, base / 2, 0);
 
-    // Hardware: handle and latches on the front (plan y = 0) wall, hinges on the back.
+    // Hardware: hinges on the back (plan y = 0), handle and latches on the front (plan y = w),
+    // wheels on one short end along the bottom edge, front and back corners.
     const hwMat = new THREE.MeshStandardMaterial({ color: 0x0d0e10, roughness: 0.5 });
     const latchMat = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.4, metalness: 0.2 });
-    const frontZ = -c.w / 2 - WALL;
+    const frontZ = c.w / 2 + WALL;
+    const backZ = -c.w / 2 - WALL;
     const handleW = Math.min(c.l * 0.32, 160);
-    box(handleW, 14, 16, hwMat, 0, base - 12, frontZ - 10);
+    box(handleW, 14, 16, hwMat, 0, base - 12, frontZ + 10);
     const latchXs = c.l > 600 ? [-0.32, 0.32] : [-0.3, 0.3];
-    for (const fx of latchXs) box(Math.min(30, c.l * 0.08), 30, 8, latchMat, fx * c.l, base - 16, frontZ - 4);
-    for (const fx of c.l > 450 ? [-0.3, 0, 0.3] : [-0.25, 0.25]) box(20, 14, 10, hwMat, fx * c.l, base - 8, c.w / 2 + WALL + 5);
+    for (const fx of latchXs) box(Math.min(30, c.l * 0.08), 30, 8, latchMat, fx * c.l, base - 16, frontZ + 4);
+    for (const fx of c.l > 450 ? [-0.3, 0, 0.3] : [-0.25, 0.25]) box(20, 14, 10, hwMat, fx * c.l, base - 8, backZ - 5);
+    if (wheels !== 'none') {
+      const r = 26;
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.9 });
+      const hubMat = new THREE.MeshStandardMaterial({ color: 0x8a9099, roughness: 0.4, metalness: 0.5 });
+      const ex = (wheels === 'left' ? -1 : 1) * (c.l / 2 + WALL - r * 0.45);
+      // Along the end's bottom edge, at the front and back corners; axles run front-to-back.
+      const doubled = (c.wheels ?? 2) >= 4;
+      const cornerZ = c.w / 2 + WALL - 16;
+      for (const side of [-1, 1]) {
+        for (const k of doubled ? [0, 1] : [0]) {
+          const z = side * (cornerZ - k * 26);
+          const wheel = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 20, 28), wheelMat);
+          wheel.rotation.x = Math.PI / 2;
+          wheel.position.set(ex, r * 0.55, z);
+          wheel.castShadow = true;
+          group.add(wheel);
+          const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.45, r * 0.45, 22, 20), hubMat);
+          hub.rotation.x = Math.PI / 2;
+          hub.position.copy(wheel.position);
+          group.add(hub);
+        }
+      }
+    }
 
     if (pad > 0) {
       const foam = new THREE.MeshStandardMaterial({ color: layout.style === 'foam' ? 0x2e3136 : 0x34373c, roughness: 1 });
@@ -232,8 +258,8 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId, rot, 
     // Turn the case to match the plan view, then stand it on the plan's bottom edge if asked.
     yaw.rotation.y = (-rot * Math.PI) / 180;
     const turned = rot === 90 || rot === 270;
-    // At 0° it rests on its hinges (handle up); at 180° on the handle.
-    const downExtent = (turned ? c.l : c.w) / 2 + WALL + (rot === 0 ? 10 : rot === 180 ? 26 : 0);
+    // At 0° it rests on its handle (hinge up); at 180° on the hinges.
+    const downExtent = (turned ? c.l : c.w) / 2 + WALL + (rot === 0 ? 26 : rot === 180 ? 10 : (rot === 270 && wheels === 'left') || (rot === 90 && wheels === 'right') ? 12 : 0);
     if (pose === 'standing') {
       posed.rotation.x = Math.PI / 2;
       posed.position.set(0, downExtent, -base / 2);
@@ -262,7 +288,7 @@ export function Preview3D({ layout, c, solve, issues, showLid, selectedId, rot, 
       controls.update();
       k.fittedFor = key;
     }
-  }, [layout, c, solve, issues, showLid, selectedId, rot, pose]);
+  }, [layout, c, solve, issues, showLid, selectedId, rot, pose, wheels]);
 
   return <div ref={hostRef} className="preview3d" />;
 }

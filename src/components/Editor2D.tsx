@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CaseSpec, Divider, Layout, PlacedItem, Rect, ResolvedDivider, Units } from '../types';
+import type { CaseSpec, Divider, Layout, PlacedItem, Rect, ResolvedDivider, Units, WheelSide } from '../types';
 import {
   footprint,
   heal,
@@ -9,6 +9,7 @@ import {
   snapItem,
   uid,
   wallInset,
+  wheelSide,
   type DividerSolve,
   type Issue,
   type SnapGuide,
@@ -31,7 +32,7 @@ interface Props {
   onSelect: (s: Selection) => void;
   set: (next: Layout | ((p: Layout) => Layout), commit?: boolean) => void;
   checkpoint: () => void;
-  /** plan-view rotation; 0 = handle side at the top */
+  /** plan-view rotation; 0 = hinge at the top, handle at the bottom */
   rot: ViewRot;
 }
 
@@ -297,7 +298,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
       <g transform={caseTransform}>
         <rect x={-SHELL} y={-SHELL} width={c.l + 2 * SHELL} height={c.w + 2 * SHELL} rx={SHELL * 0.9} fill="url(#shell)" />
         <rect x={-SHELL + 4} y={-SHELL + 4} width={c.l + 2 * SHELL - 8} height={c.w + 2 * SHELL - 8} rx={SHELL * 0.7} fill="none" stroke="var(--shell-edge)" strokeWidth={0.8} />
-        <ShellMarks c={c} fs={fs} rot={rot} />
+        <ShellMarks c={c} fs={fs} rot={rot} wheels={wheelSide(layout, c)} />
         <rect x={0} y={0} width={c.l} height={c.w} rx={4} fill={layout.style === 'none' ? 'var(--floor)' : 'url(#foamtex)'} />
       </g>
 
@@ -500,31 +501,50 @@ export function screenDeltaToCase(dx: number, dy: number, rot: ViewRot) {
   return { dx, dy };
 }
 
-/** Handle and latches on the front (y = 0) wall, hinges on the back wall, drawn in the shell band. */
-function ShellMarks({ c, fs, rot }: { c: CaseSpec; fs: number; rot: ViewRot }) {
+/**
+ * Case hardware drawn in the shell band: hinges on the back wall (plan y = 0, top at 0°),
+ * handle and latches on the front wall (y = w), and wheels on one short end at both corners.
+ */
+function ShellMarks({ c, fs, rot, wheels }: { c: CaseSpec; fs: number; rot: ViewRot; wheels: WheelSide }) {
   // Labels run along their wall as it appears on screen, never upside down.
-  const along = (x: number, y: number) => `rotate(${(rot === 90 || rot === 270 ? -90 : 0) - rot} ${x} ${y})`;
+  const along = (x: number, y: number, wallVertical = false) =>
+    `rotate(${((rot === 90 || rot === 270) !== wallVertical ? -90 : 0) - rot} ${x} ${y})`;
   const handleW = Math.min(c.l * 0.32, 160);
   const latchW = Math.min(30, c.l * 0.08);
-  const nLatch = c.l > 600 ? 3 : 2;
-  const latchXs = nLatch === 3 ? [c.l * 0.18, c.l * 0.5, c.l * 0.82] : [c.l * 0.2, c.l * 0.8];
+  const latchXs = c.l > 600 ? [c.l * 0.18, c.l * 0.5, c.l * 0.82] : [c.l * 0.2, c.l * 0.8];
   const hingeXs = c.l > 450 ? [c.l * 0.2, c.l * 0.5, c.l * 0.8] : [c.l * 0.25, c.l * 0.75];
-  const by = c.w + SHELL / 2;
+  const hingeY = -SHELL / 2;
+  const frontY = c.w + SHELL / 2;
+  const wheelX = wheels === 'left' ? -SHELL / 2 : c.l + SHELL / 2;
+  const wheelLen = Math.min(40, c.w * 0.22);
   return (
     <g pointerEvents="none" className="shell-marks">
-      <rect x={c.l / 2 - handleW / 2} y={-SHELL + 4} width={handleW} height={SHELL - 9} rx={(SHELL - 9) / 2} className="handle" />
+      {hingeXs.map((x) => (
+        <rect key={x} x={x - 9} y={-SHELL + 5} width={18} height={SHELL - 9} rx={1.5} className="hinge" />
+      ))}
+      <rect x={c.l / 2 - handleW / 2} y={c.w + 5} width={handleW} height={SHELL - 9} rx={(SHELL - 9) / 2} className="handle" />
       {latchXs
         .filter((x) => Math.abs(x - c.l / 2) > handleW / 2 + latchW / 2 + 2)
         .map((x) => (
-          <rect key={x} x={x - latchW / 2} y={-SHELL + 3} width={latchW} height={SHELL - 6} rx={2} className="latch" />
+          <rect key={x} x={x - latchW / 2} y={c.w + 3} width={latchW} height={SHELL - 6} rx={2} className="latch" />
         ))}
-      {hingeXs.map((x) => (
-        <rect key={x} x={x - 9} y={c.w + 4} width={18} height={SHELL - 9} rx={1.5} className="hinge" />
-      ))}
-      <text x={c.l / 2} y={by} dy={fs * 0.3} fontSize={fs * 0.7} textAnchor="middle" className="shell-label" transform={along(c.l / 2, by)}>
+      {wheels !== 'none' && (
+        <>
+          {[2, c.w - 2 - wheelLen].map((y) => (
+            <g key={y}>
+              <rect x={wheelX - (SHELL - 6) / 2} y={y} width={SHELL - 6} height={wheelLen} rx={(SHELL - 6) / 2} className="wheel" />
+              <rect x={wheelX - 2} y={y + wheelLen * 0.2} width={4} height={wheelLen * 0.6} rx={2} className="wheel-hub" />
+            </g>
+          ))}
+          <text x={wheelX} y={c.w / 2} dy={fs * 0.3} fontSize={fs * 0.7} textAnchor="middle" className="shell-label wheel-label" transform={along(wheelX, c.w / 2, true)}>
+            WHEELS
+          </text>
+        </>
+      )}
+      <text x={c.l / 2} y={hingeY} dy={fs * 0.3} fontSize={fs * 0.7} textAnchor="middle" className="shell-label" transform={along(c.l / 2, hingeY)}>
         HINGE
       </text>
-      <text x={c.l / 2} y={-SHELL / 2 + 0.5} dy={fs * 0.3} fontSize={fs * 0.7} textAnchor="middle" className="shell-label dark" transform={along(c.l / 2, -SHELL / 2 + 0.5)}>
+      <text x={c.l / 2} y={frontY} dy={fs * 0.3} fontSize={fs * 0.7} textAnchor="middle" className="shell-label dark" transform={along(c.l / 2, frontY)}>
         HANDLE
       </text>
     </g>

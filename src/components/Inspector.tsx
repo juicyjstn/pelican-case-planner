@@ -139,7 +139,7 @@ function ItemPanel({ item, layout, c, units, set, onSelect }: Props & { item: Pl
           <LengthInput mm={item.x} units={units} onCommit={(v) => upd({ x: v })} />
         </label>
         <label>
-          From handle wall
+          From hinge wall
           <LengthInput mm={item.y} units={units} onCommit={(v) => upd({ y: v })} />
         </label>
       </div>
@@ -203,7 +203,7 @@ function DividerPanel({ id, layout, c, solve, units, set, onSelect }: Props & { 
         {d.axis === 'h' ? 'Runs left–right' : 'Runs top–bottom'}, from {endName(d.a)} to {endName(d.b)}. Height {fmt(dividerHeight(layout, c), units)}.
       </p>
       <label>
-        {d.axis === 'h' ? 'Face nearest the handle wall, from it' : 'Face nearest the left end, from it'}
+        {d.axis === 'h' ? 'Face nearest the hinge wall, from it' : 'Face nearest the left end, from it'}
         <LengthInput
           mm={face}
           units={units}

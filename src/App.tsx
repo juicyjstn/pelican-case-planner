@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GearSpec, Layout, PlacedItem, Units } from './types';
 import { useHistory } from './lib/history';
-import { checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset } from './lib/geometry';
+import { checkLayout, findFreeSpot, getCase, heal, removeDivider, solveDividers, uid, wallInset, wheelSide } from './lib/geometry';
 import { buildCutList } from './lib/cutlist';
 import { decodeHash, downloadText, normalizeLayout, safeStorage, shareUrl } from './lib/share';
 import { fmt } from './lib/units';
@@ -354,6 +354,18 @@ export default function App() {
                 </button>
               </div>
               {(pose === 'standing' || mode === '3d') && <RotateControl rot={rot} turn={turn} />}
+              {wheelSide(layout, c) !== 'none' && (
+                <button
+                  className="btn small"
+                  onClick={() => {
+                    setPose('standing');
+                    setRot(wheelSide(layout, c) === 'left' ? 270 : 90);
+                  }}
+                  title="Stand the case on its wheels, like you'd roll it"
+                >
+                  Stand on wheels
+                </button>
+              )}
               <label className="check">
                 <input type="checkbox" checked={showLid} onChange={(e) => setShowLid(e.target.checked)} /> Show lid space
               </label>

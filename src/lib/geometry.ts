@@ -1,4 +1,4 @@
-import type { CaseSpec, Divider, DividerEnd, Layout, PlacedItem, Rect, ResolvedDivider } from '../types';
+import type { CaseSpec, Divider, DividerEnd, Layout, PlacedItem, Rect, ResolvedDivider, WheelSide } from '../types';
 import { CASES } from '../data/cases';
 
 const EPS = 0.5;
@@ -18,6 +18,14 @@ export function getCase(layout: Layout): CaseSpec {
 export function baseDepth(c: CaseSpec): number {
   if (c.base != null) return c.base;
   return c.d - (c.lid ?? 0);
+}
+
+/** End the wheels default to on a rolling case (plan view, handle wall at the top). */
+export const DEFAULT_WHEEL_END: 'left' | 'right' = 'left';
+
+/** Where this layout's case has wheels, if any. */
+export function wheelSide(layout: Layout, c: CaseSpec): WheelSide {
+  return layout.wheels ?? (c.wheels ? DEFAULT_WHEEL_END : 'none');
 }
 
 /** Thickness of the TrekPak perimeter lining, when that style is active. */

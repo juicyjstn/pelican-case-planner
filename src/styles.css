@@ -153,6 +153,8 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .hint { color: var(--muted); font-size: 12px; margin: 0; }
 .note { font-size: 12px; margin: 0; color: var(--muted); }
 .note.warn { color: var(--warn); }
+.wheels-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wheels-label { color: var(--muted); }
 .specs { margin: 0; display: grid; gap: 4px; }
 .specs div { display: flex; justify-content: space-between; gap: 8px; }
 .specs dt { color: var(--muted); }
@@ -241,6 +243,9 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .shell-marks .handle { fill: #0b0c0e; stroke: #3d434b; stroke-width: .6; }
 .shell-marks .latch { fill: #2f343b; stroke: #4a5059; stroke-width: .5; }
 .shell-marks .hinge { fill: #101214; }
+.shell-marks .wheel { fill: #08090a; stroke: #4a5059; stroke-width: .6; }
+.shell-marks .wheel-hub { fill: #8a9099; }
+.shell-label.wheel-label { fill: var(--accent); }
 .shell-label { fill: #6f7781; font-weight: 700; letter-spacing: .12em; }
 .shell-label.dark { fill: #8a929c; }
 .preview3d.loading { display: grid; place-items: center; color: var(--muted); }

@@ -3,6 +3,7 @@
 export type Units = 'in' | 'mm';
 export type DividerStyle = 'none' | 'foam' | 'padded' | 'trekpak';
 export type Orientation = 'flat' | 'side' | 'end';
+export type WheelSide = 'left' | 'right' | 'none';
 
 export interface CaseSpec {
   id: string;
@@ -21,6 +22,11 @@ export interface CaseSpec {
   tpFactory?: boolean;
   /** TrekPak divider height Pelican uses for this case */
   tpHeight?: number | null;
+  /**
+   * Rolling case: number of wheels. They sit on one short end along the base's bottom edge,
+   * at both the front (handle) and back (hinge) corners; 4 = a double wheel at each corner.
+   */
+  wheels?: number;
   source?: string;
   notes?: string;
 }
@@ -101,6 +107,8 @@ export interface Layout {
   name: string;
   caseId: string;
   customCase?: { l: number; w: number; d: number; lid: number | null; base: number | null };
+  /** which short end the wheels are on; undefined = the case's default */
+  wheels?: WheelSide;
   style: DividerStyle;
   items: PlacedItem[];
   dividers: Divider[];

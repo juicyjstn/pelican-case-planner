@@ -4,7 +4,8 @@ import { CASES } from '../data/cases';
 import { GEAR } from '../data/gear';
 import { STYLES, defaultSettings } from '../data/defaults';
 import { fmt, parseLength } from '../lib/units';
-import { baseDepth } from '../lib/geometry';
+import { baseDepth, wheelSide } from '../lib/geometry';
+import type { WheelSide } from '../types';
 
 export const REPO = 'juicyjstn/pelican-case-planner';
 
@@ -35,6 +36,7 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
     set((L) => ({
       ...L,
       caseId: id,
+      wheels: undefined, // back to the new case's own default
       customCase: id === 'custom' ? (L.customCase ?? { l: c.l, w: c.w, d: c.d, lid: c.lid, base: c.base }) : L.customCase,
     }));
   const editCustom = (key: 'l' | 'w' | 'd' | 'lid' | 'base', text: string) => {
@@ -109,6 +111,22 @@ function CasePicker({ layout, c, units, set }: { layout: Layout; c: CaseSpec; un
           {c.notes && <p className="note">{c.notes}</p>}
         </dl>
       )}
+      <div className="wheels-row">
+        <span className="wheels-label">Wheels</span>
+        <div className="seg small" role="group" aria-label="Wheel end">
+          {(
+            [
+              ['left', 'Left end'],
+              ['right', 'Right end'],
+              ['none', 'None'],
+            ] as [WheelSide, string][]
+          ).map(([id, label]) => (
+            <button key={id} className={wheelSide(layout, c) === id ? 'on' : ''} onClick={() => set((L) => ({ ...L, wheels: id }))}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

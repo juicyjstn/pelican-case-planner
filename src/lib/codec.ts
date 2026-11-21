@@ -6,13 +6,14 @@
  * style's defaults. A typical layout encodes to well under 100 characters.
  * Photos are never included.
  */
-import type { Divider, DividerStyle, Layout, Orientation, PlacedItem, Settings } from '../types';
+import type { Divider, DividerStyle, Layout, Orientation, PlacedItem, Settings, WheelSide } from '../types';
 import { GEAR } from '../data/gear';
 import { colorFor, defaultSettings } from '../data/defaults';
 
 const VERSION = 2;
 const STYLES: DividerStyle[] = ['none', 'foam', 'padded', 'trekpak'];
 const ORIENTS: Orientation[] = ['flat', 'side', 'end'];
+const WHEELS: WheelSide[] = ['none', 'left', 'right'];
 const SETTING_KEYS: (keyof Settings)[] = [
   'floorPad',
   'clearance',
@@ -77,6 +78,9 @@ class Writer {
 class Reader {
   p = 0;
   constructor(private b: Uint8Array) {}
+  more() {
+    return this.p < this.b.length;
+  }
   u(): number {
     let n = 0;
     let mul = 1;
@@ -176,6 +180,8 @@ export function encodeCompact(layout: Layout): string {
     if (aRef !== undefined) w.u(aRef);
     if (bRef !== undefined) w.u(bRef);
   }
+  // Trailing, optional: wheel end override (older links simply end before this).
+  if (layout.wheels) w.u(WHEELS.indexOf(layout.wheels) + 1);
   return b64url(w.bytes);
 }
 
@@ -249,7 +255,8 @@ export function decodeCompact(code: string): Layout | null {
       const b = f & 4 ? { kind: 'div' as const, id: uids[r.u()] } : { kind: 'wall' as const };
       dividers.push({ uid: uids[n], axis: f & 1 ? 'v' : 'h', pos, a, b });
     }
-    return { version: 1, name, caseId, customCase, style, items, dividers, settings };
+    const wheels = r.more() ? WHEELS[r.u() - 1] : undefined;
+    return { version: 1, name, caseId, customCase, style, items, dividers, settings, wheels };
   } catch {
     return null;
   }
