@@ -359,6 +359,18 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .measure { fill: var(--accent); font-weight: 700; paint-order: stroke; stroke: var(--stage); stroke-width: .8; }
 .cursor-readout { fill: var(--muted); font-variant-numeric: tabular-nums; }
 
+.dialog-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45); display: grid; place-items: center; padding: 16px; }
+.dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(560px, 100%); max-height: min(80dvh, 720px); display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+.dialog-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px 8px; }
+.dialog-head h2 { margin: 0; font-size: 16px; }
+.dialog-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.layouts { list-style: none; margin: 0; padding: 4px 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.layouts li { display: flex; align-items: center; gap: 6px; padding: 4px; border-radius: 8px; }
+.layouts li.current { background: var(--panel-2); }
+.layout-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; text-align: left; background: none; border: 0; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.layout-open:hover { background: var(--panel-2); }
+.layout-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.layout-meta { font-size: 12px; color: var(--muted); }
 .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 20px; font-weight: 600; z-index: 10; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
 
 /* ---------- print ---------- */

@@ -43,5 +43,13 @@ export function useHistory<T>(initial: T) {
     setState(f);
   }, []);
 
-  return { state, set, checkpoint, undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0 };
+  /** Replace the state and forget undo history (switching to a different layout). */
+  const reset = useCallback((value: T) => {
+    past.current = [];
+    future.current = [];
+    stateRef.current = value;
+    setState(value);
+  }, []);
+
+  return { state, set, reset, checkpoint, undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0 };
 }

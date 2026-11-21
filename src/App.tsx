@@ -14,13 +14,14 @@ import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { PrintSheets, TemplateArt, type Paper } from './components/PrintSheets';
 import { AppMenu } from './components/AppMenu';
+import { LayoutsDialog } from './components/LayoutsDialog';
+import { deleteLayout, getCurrentId, loadLibrary, newId, putLayout, setCurrentId, type SavedLayout } from './lib/library';
 
 // three.js is large; load it only when the 3D pane is shown.
 const Preview3D = lazy(() => import('./components/Preview3D').then((m) => ({ default: m.Preview3D })));
 
 const store = safeStorage();
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
-const KEY = 'pcp.layout.v1';
 
 function itemFromGear(g: GearSpec): PlacedItem {
   return {
@@ -56,24 +57,25 @@ function starterLayout(): Layout {
   return base;
 }
 
-function initialLayout(): Layout {
+/** Which layout to open: a shared link (as a new entry), else the last one open, else a starter. */
+function initial(): { id: string; layout: Layout } {
+  const lib = loadLibrary();
   const fromLink = decodeHash(location.hash);
-  if (fromLink) return fromLink;
-  const saved = store.get(KEY);
-  if (saved) {
-    try {
-      const l = normalizeLayout(JSON.parse(saved));
-      if (l) return l;
-    } catch {
-      /* ignore corrupt storage */
-    }
-  }
-  return starterLayout();
+  if (fromLink) return { id: newId(), layout: fromLink };
+  const cur = getCurrentId();
+  if (cur && lib[cur]) return { id: cur, layout: lib[cur].layout };
+  const recent = Object.values(lib).sort((a, b) => b.updated - a.updated)[0];
+  if (recent) return { id: recent.id, layout: recent.layout };
+  return { id: newId(), layout: starterLayout() };
 }
+const START = initial();
 
 export default function App() {
-  const hist = useHistory<Layout>(initialLayout());
+  const hist = useHistory<Layout>(START.layout);
   const { state: layout, set, checkpoint, undo, redo } = hist;
+  const [currentId, setCurrent] = useState(START.id);
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
+  const [libVersion, setLibVersion] = useState(0);
   const [units, setUnits] = useState<Units>(() => (store.get('pcp.units') as Units) || 'in');
   const [mode, setMode] = useState<'2d' | 'split' | '3d'>(() => (store.get('pcp.mode') as '2d') || 'split');
   const [tool, setTool] = useState<Tool>('select');
@@ -146,8 +148,9 @@ export default function App() {
 
   // Autosave; drop the share hash once it has been loaded.
   useEffect(() => {
-    store.set(KEY, JSON.stringify(layout));
-  }, [layout]);
+    putLayout(currentId, layout);
+    setCurrentId(currentId);
+  }, [layout, currentId]);
   useEffect(() => {
     if (/[#&][lc]=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
   }, []);
@@ -266,9 +269,8 @@ export default function App() {
       try {
         const l = normalizeLayout(JSON.parse(txt));
         if (!l) throw new Error('bad');
-        set(l);
-        setSelection(null);
-        flash(l.name ? `Loaded ${l.name}` : 'Layout loaded');
+        switchTo(newId(), l);
+        flash(l.name ? `Opened ${l.name}` : 'Layout opened');
       } catch {
         flash("That file isn't a case layout");
       }
@@ -285,10 +287,34 @@ export default function App() {
     flushSync(() => setPaper(p));
     window.print();
   };
-  const newLayout = () => {
-    if (!confirm('Start a new empty layout? (You can undo this.)')) return;
-    set({ ...starterLayout(), items: [], name: '' });
+  /** Open another layout; the one you were on is already saved in My layouts. */
+  const switchTo = (id: string, l: Layout) => {
+    hist.reset(l);
+    setCurrent(id);
     setSelection(null);
+    setLibVersion((v) => v + 1);
+  };
+  const newLayout = () => {
+    switchTo(newId(), { ...starterLayout(), items: [], name: '' });
+    setLayoutsOpen(false);
+    flash('New layout. Your last one is saved in My layouts.');
+  };
+  const duplicateLayout = (e: SavedLayout) => {
+    const id = newId();
+    const copy = { ...e.layout, name: `${e.layout.name || 'Untitled case'} (copy)` };
+    putLayout(id, copy);
+    switchTo(id, copy);
+    setLayoutsOpen(false);
+  };
+  const removeLayout = (e: SavedLayout) => {
+    if (!confirm(`Delete "${e.layout.name || 'Untitled case'}"? This can't be undone.`)) return;
+    deleteLayout(e.id);
+    if (e.id === currentId) {
+      const next = Object.values(loadLibrary()).sort((a, b) => b.updated - a.updated)[0];
+      if (next) switchTo(next.id, next.layout);
+      else switchTo(newId(), { ...starterLayout(), items: [], name: '' });
+    }
+    setLibVersion((v) => v + 1);
   };
 
   const errors = issues.filter((i) => i.severity === 'error').length;
@@ -341,6 +367,7 @@ export default function App() {
             setTheme={setTheme}
             paper={paper}
             onNew={newLayout}
+            onLayouts={() => setLayoutsOpen(true)}
             onOpen={() => fileRef.current?.click()}
             onCopyLink={share}
             onPrint={printTemplate}
@@ -497,6 +524,17 @@ export default function App() {
       </div>
       {narrow && (leftOpen || rightOpen) && <div className="backdrop" onClick={() => (setLeftOpen(false), setRightOpen(false))} />}
 
+      {layoutsOpen && (
+        <LayoutsDialog
+          currentId={currentId}
+          version={libVersion}
+          onOpen={(e) => (switchTo(e.id, e.layout), setLayoutsOpen(false))}
+          onDuplicate={duplicateLayout}
+          onDelete={removeLayout}
+          onNew={newLayout}
+          onClose={() => setLayoutsOpen(false)}
+        />
+      )}
       {toast && <div className="toast">{toast}</div>}
 
       <PrintSheets layout={layout} c={c} solve={solve} labelOf={labelOf} cuts={cuts} units={units} paper={paper} />

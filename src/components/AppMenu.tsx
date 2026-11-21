@@ -10,6 +10,7 @@ interface Props {
   paper: Paper;
   onNew: () => void;
   onOpen: () => void;
+  onLayouts: () => void;
   onCopyLink: () => void;
   onPrint: (paper: Paper) => void;
   onSvg: () => void;
@@ -30,6 +31,7 @@ const ICONS = {
   menu: 'M4 6h16M4 12h16M4 18h16',
   new: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M12 12v6M9 15h6',
   open: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  layouts: 'M4 5h16v4H4zM4 11h16v4H4zM4 17h10v3H4z',
   link: 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7',
   export: 'M12 3v12M7 8l5-5 5 5M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4',
   print: 'M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z',
@@ -88,9 +90,13 @@ export function AppMenu(p: Props) {
             <Icon d={ICONS.new} />
             <span className="mi-text">New layout</span>
           </button>
+          <button className="menu-item" role="menuitem" onClick={run(p.onLayouts)}>
+            <Icon d={ICONS.layouts} />
+            <span className="mi-text">My layouts…</span>
+          </button>
           <button className="menu-item" role="menuitem" onClick={run(p.onOpen)}>
             <Icon d={ICONS.open} />
-            <span className="mi-text">Open…</span>
+            <span className="mi-text">Open file…</span>
           </button>
 
           <div className="menu-sep" />
