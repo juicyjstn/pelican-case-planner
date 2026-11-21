@@ -16,6 +16,7 @@ import { Inspector } from './components/Inspector';
 import { PrintSheets, TemplateArt, type Paper } from './components/PrintSheets';
 import { AppMenu } from './components/AppMenu';
 import { LayoutsDialog } from './components/LayoutsDialog';
+import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { deleteLayout, getCurrentId, loadLibrary, newId, putLayout, setCurrentId, type SavedLayout } from './lib/library';
 
 // three.js is large; load it only when the 3D pane is shown.
@@ -76,6 +77,7 @@ export default function App() {
   const { state: layout, set, checkpoint, undo, redo } = hist;
   const [currentId, setCurrent] = useState(START.id);
   const [layoutsOpen, setLayoutsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [libVersion, setLibVersion] = useState(0);
   const [units, setUnits] = useState<Units>(() => (store.get('pcp.units') as Units) || 'in');
   const [mode, setMode] = useState<'2d' | 'split' | '3d'>(() => (store.get('pcp.mode') as '2d') || 'split');
@@ -283,7 +285,7 @@ export default function App() {
       }
       if (mod) return;
       if (e.key === 'Escape') {
-        if (document.querySelector('.menu')) return; // the open menu handles its own Escape
+        if (document.querySelector('.menu, .dialog')) return; // an open menu or dialog handles its own Escape
         setTool('select');
         setSelection(null);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -292,6 +294,7 @@ export default function App() {
       } else if (e.key === 'h' && usesDividers) setTool((x) => (x === 'divider-h' ? 'select' : 'divider-h'));
       else if (e.key === 'v' && usesDividers) setTool((x) => (x === 'divider-v' ? 'select' : 'divider-v'));
       else if (e.key === 'm') setTool((x) => (x === 'measure' ? 'select' : 'measure'));
+      else if (e.key === '?') setHelpOpen((v) => !v);
       else if (e.key === 'r' && selection?.kind === 'item') {
         const ids = targetIds();
         set((L) => ({ ...L, items: L.items.map((i) => (ids.includes(i.uid) ? { ...i, rot: !i.rot, room: rotateRoom(i.room, !i.rot) } : i)) }));
@@ -437,6 +440,7 @@ export default function App() {
             paper={paper}
             onNew={newLayout}
             onLayouts={() => setLayoutsOpen(true)}
+            onShortcuts={() => setHelpOpen(true)}
             onOpen={() => fileRef.current?.click()}
             onCopyLink={share}
             onPrint={printTemplate}
@@ -615,6 +619,7 @@ export default function App() {
           onClose={() => setLayoutsOpen(false)}
         />
       )}
+      {helpOpen && <ShortcutsDialog onClose={() => setHelpOpen(false)} />}
       {toast && <div className="toast">{toast}</div>}
 
       <PrintSheets layout={layout} c={c} solve={solve} labelOf={labelOf} cuts={cuts} units={units} paper={paper} />
