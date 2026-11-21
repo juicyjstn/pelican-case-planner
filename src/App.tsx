@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GearSpec, Layout, PlacedItem, Units } from './types';
 import { useHistory } from './lib/history';
@@ -12,6 +13,7 @@ import { Editor2D, type Selection, type Tool } from './components/Editor2D';
 import { Sidebar } from './components/Sidebar';
 import { Inspector } from './components/Inspector';
 import { PrintSheets, TemplateArt, type Paper } from './components/PrintSheets';
+import { ExportMenu } from './components/ExportMenu';
 
 // three.js is large; load it only when the 3D pane is shown.
 const Preview3D = lazy(() => import('./components/Preview3D').then((m) => ({ default: m.Preview3D })));
@@ -222,6 +224,11 @@ export default function App() {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${c.l + 2 * pad}mm" height="${c.w + 2 * pad}mm" viewBox="${-pad} ${-pad} ${c.l + 2 * pad} ${c.w + 2 * pad}" font-family="Helvetica, Arial, sans-serif">${art}</svg>`;
     downloadText(`${layout.name.replace(/[^\w-]+/g, '_') || 'case'}-template.svg`, svg, 'image/svg+xml');
   };
+  const printTemplate = (p: Paper) => {
+    // Render the tiles for this paper size before the print dialog snapshots the page.
+    flushSync(() => setPaper(p));
+    window.print();
+  };
   const newLayout = () => {
     if (!confirm('Start a new empty layout? (You can undo this.)')) return;
     set({ ...starterLayout(), items: [], name: 'My case' });
@@ -276,18 +283,7 @@ export default function App() {
           <button className="btn" onClick={share}>
             Share link
           </button>
-          <div className="print-group">
-            <select value={paper} onChange={(e) => setPaper(e.target.value as Paper)} aria-label="Paper size">
-              <option value="letter">Letter</option>
-              <option value="a4">A4</option>
-            </select>
-            <button className="btn primary" onClick={() => window.print()} title="Print a full-size template and cut list">
-              Print 1:1
-            </button>
-            <button className="btn" onClick={downloadSvg} title="Full-size SVG for a plotter or print shop">
-              SVG
-            </button>
-          </div>
+          <ExportMenu paper={paper} onPrint={printTemplate} onSvg={downloadSvg} />
         </div>
       </header>
 
