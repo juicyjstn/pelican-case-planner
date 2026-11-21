@@ -396,3 +396,74 @@ export function checkLayout(layout: Layout, c: CaseSpec, solve: DividerSolve, fm
   }
   return issues;
 }
+
+/* ------------------------------------------------------------------ */
+/* Bays (compartments between dividers)                                */
+/* ------------------------------------------------------------------ */
+
+export interface Bay {
+  /** inside of the bay, face to face */
+  rect: Rect;
+  /** false when the bay isn't a simple rectangle (an L-shape, say); rect is then its bounding box */
+  rectangular: boolean;
+}
+
+/**
+ * Find the compartments the dividers make, by flood-filling a 2 mm grid of the floor,
+ * then snapping each rectangular bay's edges onto the exact divider faces and walls.
+ */
+export function computeBays(layout: Layout, c: CaseSpec, solve: DividerSolve): Bay[] {
+  if (!(layout.style === 'trekpak' || layout.style === 'padded') || solve.resolved.size === 0) return [];
+  const ins = wallInset(layout);
+  const x0 = ins, y0 = ins, x1 = c.l - ins, y1 = c.w - ins;
+  const res = 2;
+  const cols = Math.max(1, Math.ceil((x1 - x0) / res));
+  const rows = Math.max(1, Math.ceil((y1 - y0) / res));
+  const grid = new Int32Array(cols * rows); // 0 = open, -1 = divider, n > 0 = bay n
+  const pad = res * 0.6; // make sure thin dividers still seal
+  const rects = [...solve.resolved.values()].map((d) => d.rect);
+  for (const r of rects) {
+    const i0 = Math.max(0, Math.floor((r.x - pad - x0) / res));
+    const i1 = Math.min(cols - 1, Math.floor((r.x + r.w + pad - x0) / res));
+    const j0 = Math.max(0, Math.floor((r.y - pad - y0) / res));
+    const j1 = Math.min(rows - 1, Math.floor((r.y + r.h + pad - y0) / res));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) grid[j * cols + i] = -1;
+  }
+  const xs = [x0, x1, ...rects.flatMap((r) => [r.x, r.x + r.w])];
+  const ys = [y0, y1, ...rects.flatMap((r) => [r.y, r.y + r.h])];
+  const snapTo = (v: number, cands: number[]) => {
+    let best = v, bd = res * 2;
+    for (const cnd of cands) if (Math.abs(cnd - v) < bd) (bd = Math.abs(cnd - v)), (best = cnd);
+    return best;
+  };
+  const bays: Bay[] = [];
+  const stack: number[] = [];
+  let id = 0;
+  for (let start = 0; start < grid.length; start++) {
+    if (grid[start] !== 0) continue;
+    id++;
+    let n = 0, mi = Infinity, ma = -Infinity, mj = Infinity, mb = -Infinity;
+    grid[start] = id;
+    stack.push(start);
+    while (stack.length) {
+      const k = stack.pop()!;
+      const i = k % cols, j = (k - i) / cols;
+      n++;
+      if (i < mi) mi = i;
+      if (i > ma) ma = i;
+      if (j < mj) mj = j;
+      if (j > mb) mb = j;
+      if (i > 0 && grid[k - 1] === 0) (grid[k - 1] = id), stack.push(k - 1);
+      if (i < cols - 1 && grid[k + 1] === 0) (grid[k + 1] = id), stack.push(k + 1);
+      if (j > 0 && grid[k - cols] === 0) (grid[k - cols] = id), stack.push(k - cols);
+      if (j < rows - 1 && grid[k + cols] === 0) (grid[k + cols] = id), stack.push(k + cols);
+    }
+    const bx0 = snapTo(x0 + mi * res, xs), bx1 = snapTo(Math.min(x1, x0 + (ma + 1) * res), xs);
+    const by0 = snapTo(y0 + mj * res, ys), by1 = snapTo(Math.min(y1, y0 + (mb + 1) * res), ys);
+    const rect = { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
+    if (rect.w < 10 || rect.h < 10) continue; // slivers
+    const boxCells = (ma - mi + 1) * (mb - mj + 1);
+    bays.push({ rect, rectangular: n >= boxCells * 0.95 });
+  }
+  return bays;
+}

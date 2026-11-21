@@ -78,6 +78,8 @@ export default function App() {
   const [tool, setTool] = useState<Tool>('select');
   const [selection, setSelection] = useState<Selection>(null);
   const [showLid, setShowLid] = useState(false);
+  const [showBays, setShowBays] = useState(() => store.get('pcp.bays') !== '0');
+  useEffect(() => store.set('pcp.bays', showBays ? '1' : '0'), [showBays]);
   const [rot, setRot] = useState<ViewRot>(() => {
     const v = Number(store.get('pcp.rot'));
     return ([0, 90, 180, 270] as const).includes(v as ViewRot) ? (v as ViewRot) : 0;
@@ -367,6 +369,12 @@ export default function App() {
                 )}
               </div>
               <RotateControl rot={rot} turn={turn} />
+              {usesDividers && layout.dividers.length > 0 && (
+                <button className={`btn small toggle ${showBays ? 'on' : ''}`} onClick={() => setShowBays((v) => !v)} aria-pressed={showBays} title="Show the inside size of each compartment">
+                  <span className="lbl">Bay sizes</span>
+                  <span className="lbl-narrow">Bays</span>
+                </button>
+              )}
               <span className="tip">
                 {tool === 'select'
                   ? 'Drag to move · R rotate · arrows nudge · scroll to zoom · double-click to fit'
@@ -386,6 +394,7 @@ export default function App() {
               set={set}
               checkpoint={checkpoint}
               rot={rot}
+              showBays={showBays}
             />
           </div>
         )}

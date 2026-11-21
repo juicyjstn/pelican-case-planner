@@ -10,6 +10,7 @@ import {
   uid,
   wallInset,
   wheelSide,
+  computeBays,
   type DividerSolve,
   type Issue,
   type SnapGuide,
@@ -34,6 +35,8 @@ interface Props {
   checkpoint: () => void;
   /** plan-view rotation; 0 = hinge at the top, handle at the bottom */
   rot: ViewRot;
+  /** label each compartment with its inside size */
+  showBays?: boolean;
 }
 
 const SHELL = 22; // drawn wall thickness, mm (visual only)
@@ -44,7 +47,7 @@ type Drag =
   | { kind: 'divider'; id: string; moved: boolean }
   | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number; moved: boolean };
 
-export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selection, onSelect, set, checkpoint, rot }: Props) {
+export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selection, onSelect, set, checkpoint, rot, showBays = true }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const caseRef = useRef<SVGGElement>(null);
   const turned = rot === 90 || rot === 270;
@@ -287,6 +290,7 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
   const zoomPx = 1 / mmPerPx(); // px per mm
   const fs = Math.max(3.2, 11 / Math.max(zoomPx, 0.01)); // ~11px label text
 
+  const bays = useMemo(() => computeBays(layout, c, solve), [layout, c, solve]);
   const selectedItem = selection?.kind === 'item' ? layout.items.find((i) => i.uid === selection.id) : undefined;
 
   return (
@@ -478,6 +482,32 @@ export function Editor2D({ layout, c, solve, labelOf, issues, units, tool, selec
           return label && d.length > fs * 3 ? (
             <DividerLabel key={d.uid} d={d} rot={rot} text={`${label} · ${fmt(d.length + layout.settings.fitAllowance, units)}`} fs={fs * 0.85} />
           ) : null;
+        })}
+
+      {showBays &&
+        bays.map((b, i) => {
+          if (!b.rectangular) return null;
+          const r = b.rect;
+          // Size as seen on screen, tag near the bay's on-screen bottom edge.
+          const sw = turned ? r.h : r.w;
+          const sh = turned ? r.w : r.h;
+          const text = `${fmt(sw, units)} × ${fmt(sh, units)}`;
+          const tfs = Math.min(fs * 0.8, sh / 3.2, sw / Math.max(6, text.length * 0.62));
+          if (tfs < fs * 0.35) return null;
+          const off = screenDeltaToCase(0, sh / 2 - tfs * 1.1, rot);
+          const cx = r.x + r.w / 2 + off.dx;
+          const cy = r.y + r.h / 2 + off.dy;
+          return (
+            <g key={'bay' + i} pointerEvents="none" className="bay">
+              <rect x={r.x + 1} y={r.y + 1} width={r.w - 2} height={r.h - 2} rx={1.5} className="bay-outline" />
+              <g transform={up(cx, cy)}>
+                <rect x={cx - text.length * tfs * 0.3} y={cy - tfs * 0.65} width={text.length * tfs * 0.6} height={tfs * 1.3} rx={tfs * 0.65} className="bay-tag" />
+                <text x={cx} y={cy + tfs * 0.36} fontSize={tfs} textAnchor="middle" className="bay-text">
+                  {text}
+                </text>
+              </g>
+            </g>
+          );
         })}
 
       {selectedItem && <GapReadout item={selectedItem} layout={layout} c={c} solve={solve} units={units} fs={fs} up={up} />}

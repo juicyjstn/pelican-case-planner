@@ -151,6 +151,7 @@ a { color: var(--accent-text); }
 .undo-group .btn + .btn { border-left: 1px solid var(--line); }
 .undo-group .btn:hover:not(:disabled) { background: var(--line); }
 .btn.small { padding: 4px 8px; font-size: 12.5px; }
+.btn.toggle.on { color: var(--accent-text); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 12%, var(--panel-2)); }
 .btn.wide { width: 100%; margin-top: 8px; }
 .btn.file { display: inline-flex; align-items: center; }
 .link { background: none; border: 0; color: var(--accent-text); cursor: pointer; padding: 0; text-decoration: underline; }
@@ -314,6 +315,9 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--t
 .item-dims { fill: rgba(255,255,255,.85); font-variant-numeric: tabular-nums; }
 .divlabel { fill: #111; font-weight: 700; }
 .divlabel-bg { fill: var(--accent); }
+.bay-outline { fill: none; stroke: #36c3ff; stroke-opacity: .35; stroke-width: .5; stroke-dasharray: 3 2; }
+.bay-tag { fill: rgba(10, 30, 40, .82); stroke: #36c3ff; stroke-width: .4; }
+.bay-text { fill: #8fe0ff; font-weight: 650; font-variant-numeric: tabular-nums; }
 .guide { stroke: var(--accent); stroke-dasharray: 2 1.5; }
 .gap-line { stroke: #4fc3ff; marker-start: none; }
 .gap-text { fill: #4fc3ff; font-weight: 650; paint-order: stroke; stroke: var(--stage); stroke-width: .8; font-variant-numeric: tabular-nums; }
