@@ -106,7 +106,11 @@ a { color: var(--accent); }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 .btn.danger { color: var(--err); }
-.btn.icon { padding: 6px 9px; font-size: 15px; line-height: 1; }
+.btn.icon { padding: 6px 8px; line-height: 0; display: inline-grid; place-items: center; }
+.btn.icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.undo-group { display: inline-flex; }
+.undo-group .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.undo-group .btn:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; }
 .btn.small { padding: 4px 8px; font-size: 12.5px; }
 .btn.wide { width: 100%; margin-top: 8px; }
 .btn.file { display: inline-flex; align-items: center; }

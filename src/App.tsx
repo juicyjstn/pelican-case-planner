@@ -19,6 +19,7 @@ import { ExportMenu } from './components/ExportMenu';
 const Preview3D = lazy(() => import('./components/Preview3D').then((m) => ({ default: m.Preview3D })));
 
 const store = safeStorage();
+const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 const KEY = 'pcp.layout.v1';
 
 function itemFromGear(g: GearSpec): PlacedItem {
@@ -264,12 +265,20 @@ export default function App() {
           </button>
         </div>
         <div className="actions">
-          <button className="btn icon" onClick={undo} title="Undo (Ctrl/Cmd+Z)">
-            ↶
-          </button>
-          <button className="btn icon" onClick={redo} title="Redo (Shift+Ctrl/Cmd+Z)">
-            ↷
-          </button>
+          <div className="undo-group" role="group" aria-label="History">
+            <button className="btn icon" onClick={undo} disabled={!hist.canUndo} title={`Undo (${MOD}Z)`} aria-label="Undo">
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+              </svg>
+            </button>
+            <button className="btn icon" onClick={redo} disabled={!hist.canRedo} title={`Redo (${MOD}⇧Z)`} aria-label="Redo">
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+              </svg>
+            </button>
+          </div>
           <button className="btn" onClick={newLayout}>
             New
           </button>

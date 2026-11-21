@@ -95,7 +95,7 @@ export function ExportMenu({ paper, onPrint, onSvg, onJson }: Props) {
             }}
           >
             <span>
-              <b>Export JSON</b>
+              <b>JSON</b>
               <small>Layout file you can reopen with Open</small>
             </span>
           </button>
